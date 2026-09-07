@@ -94,20 +94,20 @@ local function popup_screen_bottom(winid)
   return popup_screen_top(winid) + (tonumber(cfg.height) or 1) + 1
 end
 
-describe("manicule render lifecycle", function()
+describe("pjollrig render lifecycle", function()
   before_each(setup_env)
   after_each(teardown_env)
 
   it("hides, restores, and clears popup state without losing anchors", function()
-    local manicule = require("manicule")
-    local render = require("manicule.ui.render")
+    local pjollrig = require("pjollrig")
+    local render = require("pjollrig.ui.render")
     local bufnr = vim.api.nvim_get_current_buf()
 
-    manicule.add({
+    pjollrig.add({
       body = "render note",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
-    local records = manicule.list()
+    local records = pjollrig.list()
     assert.are.equal(1, #records)
 
     local id = records[1].id
@@ -137,10 +137,10 @@ describe("manicule render lifecycle", function()
   end)
 
   it("keeps popups while the source buffer stays visible but loses focus", function()
-    local manicule = require("manicule")
+    local pjollrig = require("pjollrig")
     local source_win = vim.api.nvim_get_current_win()
 
-    manicule.add({
+    pjollrig.add({
       body = "some note",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -164,22 +164,22 @@ describe("manicule render lifecycle", function()
     assert.is_true(wait_for_popup_count("some note", 0))
   end)
 
-  it(":ManiculeToggle emits visibility events and rebuilds real popup windows", function()
-    vim.cmd("runtime plugin/manicule.lua")
-    local events, stop_capture = H.capture_events({ "ManiculeVisibility" })
+  it(":PjollrigToggle emits visibility events and rebuilds real popup windows", function()
+    vim.cmd("runtime plugin/pjollrig.lua")
+    local events, stop_capture = H.capture_events({ "PjollrigVisibility" })
 
-    require("manicule").add({
+    require("pjollrig").add({
       body = "toggle note",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
     assert.is_true(wait_for_popup_count("toggle note", 1))
 
-    vim.cmd("ManiculeToggle")
-    assert.is_false(require("manicule.ui.render").is_visible())
+    vim.cmd("PjollrigToggle")
+    assert.is_false(require("pjollrig.ui.render").is_visible())
     assert.is_true(wait_for_popup_count("toggle note", 0))
 
-    vim.cmd("ManiculeToggle")
-    assert.is_true(require("manicule.ui.render").is_visible())
+    vim.cmd("PjollrigToggle")
+    assert.is_true(require("pjollrig.ui.render").is_visible())
     assert.is_true(wait_for_popup_count("toggle note", 1))
 
     assert.are.equal(2, #events)
@@ -190,11 +190,11 @@ describe("manicule render lifecycle", function()
   end)
 
   it("stacks same-line popups by popup height", function()
-    require("manicule").add({
+    require("pjollrig").add({
       body = "stack top\nwith another line",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
-    require("manicule").add({
+    require("pjollrig").add({
       body = "stack second",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -221,11 +221,11 @@ describe("manicule render lifecycle", function()
   end)
 
   it("numbers and separates adjacent visible popups", function()
-    require("manicule").add({
+    require("pjollrig").add({
       body = "adjacent first",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
-    require("manicule").add({
+    require("pjollrig").add({
       body = "adjacent second",
       range = { start = { 1, 0 }, end_ = { 1, 0 } },
     })
@@ -244,11 +244,11 @@ describe("manicule render lifecycle", function()
   end)
 
   it("keeps window options and the popup tag across a reconfigure-reuse render", function()
-    local manicule = require("manicule")
-    local render = require("manicule.ui.render")
+    local pjollrig = require("pjollrig")
+    local render = require("pjollrig.ui.render")
     local bufnr = vim.api.nvim_get_current_buf()
 
-    manicule.add({
+    pjollrig.add({
       body = "reuse options",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -259,37 +259,37 @@ describe("manicule render lifecycle", function()
     -- window is reused, not recreated). One-time window state — the
     -- orphan-prune tag and the float window options — must still be in
     -- place on the reused window.
-    local records = manicule.list()
+    local records = pjollrig.list()
     render.update_viewport_popups(bufnr, records, records)
     assert.are.equal(winid, floating_windows_containing("reuse options")[1])
-    assert.is_true(vim.w[winid].manicule_popup)
+    assert.is_true(vim.w[winid].pjollrig_popup)
     local winhighlight = vim.wo[winid].winhighlight
-    assert.is_truthy(winhighlight:find("FloatBorder:ManiculeCommentBorder", 1, true))
+    assert.is_truthy(winhighlight:find("FloatBorder:PjollrigCommentBorder", 1, true))
     -- The card surface paints the whole popup window; the footer hint
     -- takes the receded border gray.
-    assert.is_truthy(winhighlight:find("NormalFloat:ManiculeCardBg", 1, true))
-    assert.is_truthy(winhighlight:find("FloatFooter:ManiculeCommentHint", 1, true))
+    assert.is_truthy(winhighlight:find("NormalFloat:PjollrigCardBg", 1, true))
+    assert.is_truthy(winhighlight:find("FloatFooter:PjollrigCommentHint", 1, true))
     assert.is_false(vim.wo[winid].wrap)
   end)
 
   it("prunes an orphaned popup but keeps the tracked one", function()
-    local manicule = require("manicule")
-    local render = require("manicule.ui.render")
+    local pjollrig = require("pjollrig")
+    local render = require("pjollrig.ui.render")
 
-    manicule.add({
+    pjollrig.add({
       body = "orphan target",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
     assert.is_true(wait_for_popup_count("orphan target", 1))
 
     -- The tracked popup's winid lives on the record's handle.
-    local records = manicule.list()
+    local records = pjollrig.list()
     local tracked_winid = floating_windows_containing("orphan target")[1]
     assert.is_truthy(tracked_winid)
 
     -- Simulate a leaked/reloaded float: a separate floating window over a
     -- scratch buffer that shows the same text and carries the
-    -- `manicule_popup` win-var, but which no handle tracks.
+    -- `pjollrig_popup` win-var, but which no handle tracks.
     local orphan_buf = vim.api.nvim_create_buf(false, true)
     vim.api.nvim_buf_set_lines(orphan_buf, 0, -1, false, { "orphan target" })
     local orphan_win = vim.api.nvim_open_win(orphan_buf, false, {
@@ -300,7 +300,7 @@ describe("manicule render lifecycle", function()
       height = 1,
       style = "minimal",
     })
-    vim.api.nvim_win_set_var(orphan_win, "manicule_popup", true)
+    vim.api.nvim_win_set_var(orphan_win, "pjollrig_popup", true)
     assert.is_true(wait_for_popup_count("orphan target", 2))
 
     render.prune_orphan_popups()
@@ -316,10 +316,10 @@ describe("manicule render lifecycle", function()
   end)
 
   it("never closes a tracked popup when pruning", function()
-    local manicule = require("manicule")
-    local render = require("manicule.ui.render")
+    local pjollrig = require("pjollrig")
+    local render = require("pjollrig.ui.render")
 
-    manicule.add({
+    pjollrig.add({
       body = "keep me",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -330,7 +330,7 @@ describe("manicule render lifecycle", function()
   end)
 
   it("is a no-op when there are no tagged floats", function()
-    local render = require("manicule.ui.render")
+    local render = require("pjollrig.ui.render")
     -- No comments added: no tagged floats exist, so pruning must not error
     -- and must not touch any window.
     local before = #vim.api.nvim_list_wins()
@@ -339,16 +339,16 @@ describe("manicule render lifecycle", function()
   end)
 
   it("handles a float open failure without throwing or leaking a scratch buffer", function()
-    local manicule = require("manicule")
-    local render = require("manicule.ui.render")
-    local float = require("manicule.ui.float")
+    local pjollrig = require("pjollrig")
+    local render = require("pjollrig.ui.render")
+    local float = require("pjollrig.ui.float")
     local bufnr = vim.api.nvim_get_current_buf()
 
-    manicule.add({
+    pjollrig.add({
       body = "open failure note",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
-    local records = manicule.list()
+    local records = pjollrig.list()
 
     -- Simulate `nvim_open_win` throwing inside `open_or_reconfigure`
     -- (the pcall there returns nil on failure). `render_comment_popup`
@@ -393,7 +393,7 @@ describe("manicule render lifecycle", function()
     local first_path = H.edit_project_file(ctx, "src/a.lua", {
       "local first = true",
     })
-    require("manicule").add({
+    require("pjollrig").add({
       body = "project first",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -401,7 +401,7 @@ describe("manicule render lifecycle", function()
     local second_path = H.edit_project_file(ctx, "src/z.lua", {
       "local second = true",
     })
-    require("manicule").add({
+    require("pjollrig").add({
       body = "project second",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -419,15 +419,15 @@ describe("manicule render lifecycle", function()
   end)
 
   it("renders only one popup when a file is open in a same-URI codediff buffer", function()
-    local manicule = require("manicule")
-    local render = require("manicule.ui.render")
+    local pjollrig = require("pjollrig")
+    local render = require("pjollrig.ui.render")
 
     -- Working-tree buffer for the file the comment anchors to.
     local lines = { "local a = 1", "return a" }
     H.edit_project_file(ctx, "src/a.lua", lines)
     local work_buf = vim.api.nvim_get_current_buf()
 
-    manicule.add({
+    pjollrig.add({
       body = "wow nice",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -446,34 +446,34 @@ describe("manicule render lifecycle", function()
 
     -- Confirm the collision: codediff buffer resolves to the same URI as
     -- the working buffer — that's what makes both render the popup.
-    local adapter = require("manicule.adapter")
+    local adapter = require("pjollrig.adapter")
     assert.are.equal(adapter.identify(work_buf).uri, adapter.identify(cd_buf).uri)
 
     -- Drive a render against the codediff buffer; before the fix this
     -- pushes the popup count to 2 (one per same-URI buffer).
-    local records = manicule.list()
+    local records = pjollrig.list()
     render.reconcile(cd_buf, records, records)
     render.update_viewport_popups(cd_buf, records, records)
     assert.is_true(wait_for_popup_count("wow nice", 1))
 
     -- The dedup must survive an edit (refresh_all_loaded re-renders every
     -- loaded buffer, including both same-URI buffers).
-    local original_prompt = package.loaded["manicule.ui"].prompt
-    package.loaded["manicule.ui"].prompt = function(_, cb)
+    local original_prompt = package.loaded["pjollrig.ui"].prompt
+    package.loaded["pjollrig.ui"].prompt = function(_, cb)
       cb("edited body")
     end
     local id = records[1].id
-    manicule.edit(id)
+    pjollrig.edit(id)
     vim.wait(200, function()
       return false
     end, 10)
-    package.loaded["manicule.ui"].prompt = original_prompt
+    package.loaded["pjollrig.ui"].prompt = original_prompt
     assert.is_true(wait_for_popup_count("edited body", 1))
 
     -- Focus-follow: switching back to the working window and refreshing
     -- its viewport keeps exactly one popup.
     vim.cmd("wincmd p")
-    render.update_viewport_popups(work_buf, manicule.list(), manicule.list())
+    render.update_viewport_popups(work_buf, pjollrig.list(), pjollrig.list())
     assert.is_true(wait_for_popup_count("edited body", 1))
   end)
 end)
@@ -485,7 +485,7 @@ end)
 -- like the inline box (above the anchor when the window bottom leaves no
 -- room below). Measurement assumes 'nowrap' (like the margin layout
 -- math itself), so the long-line fixtures pin it explicitly.
-describe("manicule float placement", function()
+describe("pjollrig float placement", function()
   -- Wider than any margin column a test window can offer.
   local LONG_LINE = "-- " .. string.rep("x", 200)
 
@@ -502,7 +502,7 @@ describe("manicule float placement", function()
       "return value",
     })
     vim.wo.wrap = false
-    require("manicule").add({
+    require("pjollrig").add({
       body = "margin note",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -521,7 +521,7 @@ describe("manicule float placement", function()
   it("relocates the popup below the anchor when the margin would cover code", function()
     H.edit_project_file(ctx, "src/long.lua", { LONG_LINE, LONG_LINE, LONG_LINE, LONG_LINE })
     vim.wo.wrap = false
-    require("manicule").add({
+    require("pjollrig").add({
       body = "occluded note",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -551,11 +551,11 @@ describe("manicule float placement", function()
       LONG_LINE,
     })
     vim.wo.wrap = false
-    require("manicule").add({
+    require("pjollrig").add({
       body = "unit fallback one",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
-    require("manicule").add({
+    require("pjollrig").add({
       body = "unit fallback two",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -595,7 +595,7 @@ describe("manicule float placement", function()
     -- Keep the window scrolled to the top so the anchor is the LAST
     -- visible line: no room for the popup below it.
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
-    require("manicule").add({
+    require("pjollrig").add({
       body = "bottom note",
       range = { start = { win_height - 1, 0 }, end_ = { win_height - 1, 0 } },
     })
@@ -618,7 +618,7 @@ end)
 -- flips the renderer into "always show a popup for every record" mode;
 -- teardown resets render state + reloads the default config on the next
 -- `H.setup`.
-describe("manicule sticky render", function()
+describe("pjollrig sticky render", function()
   before_each(function()
     -- Sticky is a float-mode concern; pin the display mode like the
     -- non-sticky describe above.
@@ -632,10 +632,10 @@ describe("manicule sticky render", function()
   after_each(teardown_env)
 
   it("keeps the popup when the source buffer loses focus but stays visible (#6)", function()
-    local manicule = require("manicule")
+    local pjollrig = require("pjollrig")
     local source_win = vim.api.nvim_get_current_win()
 
-    manicule.add({
+    pjollrig.add({
       body = "sticky qf note",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -652,9 +652,9 @@ describe("manicule sticky render", function()
   end)
 
   it("rebuilds the popup after the anchor window is closed (#6)", function()
-    local manicule = require("manicule")
+    local pjollrig = require("pjollrig")
 
-    manicule.add({
+    pjollrig.add({
       body = "sticky split note",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -680,7 +680,7 @@ describe("manicule sticky render", function()
     local long_line = "-- " .. string.rep("x", 200)
     H.edit_project_file(ctx, "src/sticky-long.lua", { long_line, long_line, long_line, long_line })
     vim.wo.wrap = false
-    require("manicule").add({
+    require("pjollrig").add({
       body = "sticky occluded note",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -693,8 +693,8 @@ describe("manicule sticky render", function()
   end)
 
   it("does not leak an orphaned float when the buffer is wiped before the scheduled render (#5)", function()
-    local manicule = require("manicule")
-    local render = require("manicule.ui.render")
+    local pjollrig = require("pjollrig")
+    local render = require("pjollrig.ui.render")
 
     -- Create a fresh, isolated buffer so wiping it can't disturb the
     -- project source buffer. Add a session-scope record to it, which
@@ -704,7 +704,7 @@ describe("manicule sticky render", function()
     vim.api.nvim_set_current_buf(scratch)
     vim.api.nvim_buf_set_lines(scratch, 0, -1, false, { "scratch line one", "scratch line two" })
 
-    manicule.add({
+    pjollrig.add({
       body = "sticky orphan note",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -731,7 +731,7 @@ end)
 -- `meta.excerpt` so the card quotes the ORIGINAL text even after the
 -- code changes; records that predate capture fall back to the current
 -- buffer line at the anchored range.
-describe("manicule comment card", function()
+describe("pjollrig comment card", function()
   before_each(setup_env)
   after_each(teardown_env)
 
@@ -761,7 +761,7 @@ describe("manicule comment card", function()
   end
 
   it("formats relative time against a fixed clock", function()
-    local rt = require("manicule.ui.color").relative_time
+    local rt = require("pjollrig.ui.color").relative_time
     local now = os.time({ year = 2026, month = 8, day = 25, hour = 12, min = 0, sec = 0 })
     assert.are.equal("just now", rt(now, now))
     assert.are.equal("just now", rt(now - 59, now))
@@ -780,7 +780,7 @@ describe("manicule comment card", function()
   end)
 
   it("renders quote, author/time, blank, body — hint stays in the footer", function()
-    require("manicule").add({
+    require("pjollrig").add({
       body = "card body",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -802,15 +802,15 @@ describe("manicule comment card", function()
   end)
 
   it("captures the excerpt at add time and quotes it after the line changes", function()
-    local manicule = require("manicule")
-    local render = require("manicule.ui.render")
+    local pjollrig = require("pjollrig")
+    local render = require("pjollrig.ui.render")
     local bufnr = vim.api.nvim_get_current_buf()
 
-    manicule.add({
+    pjollrig.add({
       body = "excerpt note",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
-    local records = manicule.list()
+    local records = pjollrig.list()
     assert.are.equal("local value = 1", records[1].meta.excerpt)
 
     -- The anchored line changes: the card keeps quoting the ORIGINAL
@@ -823,20 +823,20 @@ describe("manicule comment card", function()
   end)
 
   it("marks a multi-line range excerpt with a continuation ellipsis", function()
-    require("manicule").add({
+    require("pjollrig").add({
       body = "span note",
       range = { start = { 0, 0 }, end_ = { 1, 0 } },
     })
-    local records = require("manicule").list()
+    local records = require("pjollrig").list()
     assert.are.equal("local value = 1…", records[1].meta.excerpt)
   end)
 
   it("quotes the live buffer line for records without a stored excerpt", function()
-    local render = require("manicule.ui.render")
+    local render = require("pjollrig.ui.render")
     local bufnr = vim.api.nvim_get_current_buf()
     local record = {
       id = "pre-excerpt-1",
-      uri = require("manicule.uri").for_bufnr(bufnr),
+      uri = require("pjollrig.uri").for_bufnr(bufnr),
       range = { start = { 1, 0 }, end_ = { 1, 0 } },
       body = "legacy note",
       author = "octocat",
@@ -856,11 +856,11 @@ describe("manicule comment card", function()
 
   it("skips the quote when neither excerpt nor buffer text is available", function()
     H.edit_project_file(ctx, "src/blank.lua", { "", "return true" })
-    local render = require("manicule.ui.render")
+    local render = require("pjollrig.ui.render")
     local bufnr = vim.api.nvim_get_current_buf()
     local record = {
       id = "no-quote-1",
-      uri = require("manicule.uri").for_bufnr(bufnr),
+      uri = require("pjollrig.uri").for_bufnr(bufnr),
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
       body = "quoteless note",
       author = "octocat",
@@ -884,7 +884,7 @@ describe("manicule comment card", function()
   it("caps the quote at two display lines with a trailing ellipsis", function()
     local long_line = ("local phrase = phrase .. ' word' "):rep(12):gsub("%s+$", "")
     H.edit_project_file(ctx, "src/longline.lua", { long_line, "return phrase" })
-    require("manicule").add({
+    require("pjollrig").add({
       body = "cap note",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -909,14 +909,14 @@ end)
 -- never state: resolution stays on the listing surfaces (quickfix
 -- `[x]`, picker `✓` prefix, review panel `✓` on GitHub-resolved
 -- threads) and is not re-marked in the card.
-describe("manicule card origin badges", function()
+describe("pjollrig card origin badges", function()
   before_each(setup_env)
 
   after_each(function()
     package.preload["mini.icons"] = nil
     package.loaded["mini.icons"] = nil
     pcall(function()
-      require("manicule.ui.icons")._reset()
+      require("pjollrig.ui.icons")._reset()
     end)
     teardown_env()
   end)
@@ -937,8 +937,8 @@ describe("manicule card origin badges", function()
         end,
       }
     end
-    require("manicule.config").get().ui.icons = "auto"
-    require("manicule.ui.icons")._reset()
+    require("pjollrig.config").get().ui.icons = "auto"
+    require("pjollrig.ui.icons")._reset()
   end
 
   local function make_record(over)
@@ -946,7 +946,7 @@ describe("manicule card origin badges", function()
     local bufnr = vim.api.nvim_get_current_buf()
     return {
       id = over.id or "badge-rec-1",
-      uri = require("manicule.uri").for_bufnr(bufnr),
+      uri = require("pjollrig.uri").for_bufnr(bufnr),
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
       body = over.body or "badge body",
       author = over.author or "octocat",
@@ -960,7 +960,7 @@ describe("manicule card origin badges", function()
   ---Render `record` through the normal float pipeline and return its
   ---card lines + popup winid.
   local function card_lines(record)
-    local render = require("manicule.ui.render")
+    local render = require("pjollrig.ui.render")
     local bufnr = vim.api.nvim_get_current_buf()
     render.reconcile(bufnr, { record }, { record })
     render.update_viewport_popups(bufnr, { record }, { record })
@@ -969,13 +969,13 @@ describe("manicule card origin badges", function()
   end
 
   it("prefixes the github author line with [gh] in ASCII mode", function()
-    require("manicule.config").get().ui.icons = false
+    require("pjollrig.config").get().ui.icons = false
     local lines = card_lines(make_record({ meta = { github = { id = 7, imported = true } } }))
     assert.are.equal("[gh] octocat · just now", lines[2])
   end)
 
   it("keeps the local author line bare in ASCII mode", function()
-    require("manicule.config").get().ui.icons = false
+    require("pjollrig.config").get().ui.icons = false
     local lines = card_lines(make_record({}))
     assert.are.equal("octocat · just now", lines[2])
   end)
@@ -994,7 +994,7 @@ describe("manicule card origin badges", function()
   end)
 
   it("counts the badge into the card width", function()
-    require("manicule.config").get().ui.icons = false
+    require("pjollrig.config").get().ui.icons = false
     -- The author line is the card's widest line (hint is 21 cells,
     -- quote 19), so the popup width must equal it INCLUDING the badge.
     local author = "review-bot-nine"
@@ -1010,7 +1010,7 @@ describe("manicule card origin badges", function()
   end)
 
   it("keeps the origin badge on resolved records — resolution is not a card badge", function()
-    require("manicule.config").get().ui.icons = false
+    require("pjollrig.config").get().ui.icons = false
     local gh_lines = card_lines(make_record({
       id = "badge-resolved-gh",
       body = "resolved github body",
@@ -1038,7 +1038,7 @@ end)
 -- recompute, and assert the computed groups equal the formulas' output
 -- (never hardcoded theme hex). Stubbed groups are snapshotted and
 -- restored after each test so palette changes don't leak across specs.
-describe("manicule card palette", function()
+describe("pjollrig card palette", function()
   local STUB_GROUPS =
     { "Normal", "NormalFloat", "FloatBorder", "Comment", "DiagnosticSignInfo", "Special", "@string", "Identifier" }
   local saved_hls
@@ -1055,11 +1055,11 @@ describe("manicule card palette", function()
     for name, group in pairs(saved_hls) do
       vim.api.nvim_set_hl(0, name, group)
     end
-    require("manicule.ui.render").refresh_highlights()
+    require("pjollrig.ui.render").refresh_highlights()
     package.preload["mini.icons"] = nil
     package.loaded["mini.icons"] = nil
     pcall(function()
-      require("manicule.ui.icons")._reset()
+      require("pjollrig.ui.icons")._reset()
     end)
     teardown_env()
   end)
@@ -1088,12 +1088,12 @@ describe("manicule card palette", function()
     vim.api.nvim_set_hl(0, "Special", colors.special)
     vim.api.nvim_set_hl(0, "@string", colors.ts_string)
     vim.api.nvim_set_hl(0, "Identifier", colors.identifier)
-    require("manicule.ui.render").refresh_highlights()
+    require("pjollrig.ui.render").refresh_highlights()
     return colors
   end
 
   it("blend mixes per channel: t=0 keeps a, t=1 yields b, 0.5 the midpoint", function()
-    local blend = require("manicule.ui.color").blend
+    local blend = require("pjollrig.ui.color").blend
     assert.are.equal(0x000000, blend(0x000000, 0xFFFFFF, 0.0))
     assert.are.equal(0xFFFFFF, blend(0x000000, 0xFFFFFF, 1.0))
     assert.are.equal(0x808080, blend(0x000000, 0xFFFFFF, 0.5))
@@ -1106,87 +1106,87 @@ describe("manicule card palette", function()
   end)
 
   it("derives every card group from the stubbed colorscheme", function()
-    local blend = require("manicule.ui.color").blend
+    local blend = require("pjollrig.ui.color").blend
     stub_colorscheme()
     local surface = blend(0x1E1E2E, 0xCDD6F4, 0.06)
 
-    local card = hl("ManiculeCardBg")
+    local card = hl("PjollrigCardBg")
     assert.are.equal(surface, card.bg)
     assert.is_nil(card.fg)
 
-    local border = hl("ManiculeCommentBorder")
+    local border = hl("PjollrigCommentBorder")
     assert.are.equal(blend(0x6C7086, 0x1E1E2E, 0.45), border.fg)
     assert.are.equal(surface, border.bg)
 
-    local bar = hl("ManiculeCommentQuoteBar")
+    local bar = hl("PjollrigCommentQuoteBar")
     assert.are.equal(0x89B4FA, bar.fg)
     assert.are.equal(surface, bar.bg)
 
-    local quote = hl("ManiculeCommentQuote")
+    local quote = hl("PjollrigCommentQuote")
     assert.are.equal(0x9399B2, quote.fg)
     assert.is_true(quote.italic)
     assert.are.equal(surface, quote.bg)
 
-    local author = hl("ManiculeCommentAuthor")
+    local author = hl("PjollrigCommentAuthor")
     assert.are.equal(0xCDD6F4, author.fg)
     assert.is_true(author.bold)
     assert.are.equal(surface, author.bg)
 
-    local meta = hl("ManiculeCommentMeta")
+    local meta = hl("PjollrigCommentMeta")
     assert.are.equal(0x9399B2, meta.fg)
     assert.are.equal(surface, meta.bg)
 
-    local github = hl("ManiculeBadgeGithub")
+    local github = hl("PjollrigBadgeGithub")
     assert.are.equal(0xF5C2E7, github.fg)
     assert.are.equal(surface, github.bg)
 
     -- @string wins the local badge's teal chain.
-    local local_badge = hl("ManiculeBadgeLocal")
+    local local_badge = hl("PjollrigBadgeLocal")
     assert.are.equal(0x94E2D5, local_badge.fg)
     assert.are.equal(surface, local_badge.bg)
 
     -- Eol badge variants: same fg, no card bg — the collapsed marker
     -- sits on the editor line, not on a card.
-    assert.are.equal(0xF5C2E7, hl("ManiculeBadgeGithubEol").fg)
-    assert.is_nil(hl("ManiculeBadgeGithubEol").bg)
-    assert.are.equal(0x94E2D5, hl("ManiculeBadgeLocalEol").fg)
-    assert.is_nil(hl("ManiculeBadgeLocalEol").bg)
+    assert.are.equal(0xF5C2E7, hl("PjollrigBadgeGithubEol").fg)
+    assert.is_nil(hl("PjollrigBadgeGithubEol").bg)
+    assert.are.equal(0x94E2D5, hl("PjollrigBadgeLocalEol").fg)
+    assert.is_nil(hl("PjollrigBadgeLocalEol").bg)
 
     -- The hint is the quietest row: default-linked to the receded border.
-    local hint = vim.api.nvim_get_hl(0, { name = "ManiculeCommentHint", link = true })
-    assert.are.equal("ManiculeCommentBorder", hint.link)
+    local hint = vim.api.nvim_get_hl(0, { name = "PjollrigCommentHint", link = true })
+    assert.are.equal("PjollrigCommentBorder", hint.link)
   end)
 
   it("falls back through Identifier then DiagnosticSignInfo for the local badge", function()
     stub_colorscheme({ ts_string = {} })
-    assert.are.equal(0xB4BEFE, hl("ManiculeBadgeLocal").fg)
+    assert.are.equal(0xB4BEFE, hl("PjollrigBadgeLocal").fg)
     stub_colorscheme({ ts_string = {}, identifier = {} })
-    assert.are.equal(0x89B4FA, hl("ManiculeBadgeLocal").fg)
+    assert.are.equal(0x89B4FA, hl("PjollrigBadgeLocal").fg)
   end)
 
   it("skips the surface tint on a transparent theme, keeping every fg", function()
     stub_colorscheme({ normal = { fg = 0xCDD6F4 } })
     for _, name in ipairs({
-      "ManiculeCardBg",
-      "ManiculeCommentBorder",
-      "ManiculeCommentMeta",
-      "ManiculeCommentQuote",
-      "ManiculeCommentQuoteBar",
-      "ManiculeCommentAuthor",
-      "ManiculeBadgeGithub",
-      "ManiculeBadgeLocal",
+      "PjollrigCardBg",
+      "PjollrigCommentBorder",
+      "PjollrigCommentMeta",
+      "PjollrigCommentQuote",
+      "PjollrigCommentQuoteBar",
+      "PjollrigCommentAuthor",
+      "PjollrigBadgeGithub",
+      "PjollrigBadgeLocal",
     }) do
       assert.is_nil(hl(name).bg)
     end
     -- The border has no bg to recede toward: plain border fg.
-    assert.are.equal(0x6C7086, hl("ManiculeCommentBorder").fg)
+    assert.are.equal(0x6C7086, hl("PjollrigCommentBorder").fg)
     -- Every other fg still applies.
-    assert.are.equal(0x89B4FA, hl("ManiculeCommentQuoteBar").fg)
-    assert.are.equal(0xCDD6F4, hl("ManiculeCommentAuthor").fg)
-    assert.is_true(hl("ManiculeCommentAuthor").bold)
+    assert.are.equal(0x89B4FA, hl("PjollrigCommentQuoteBar").fg)
+    assert.are.equal(0xCDD6F4, hl("PjollrigCommentAuthor").fg)
+    assert.is_true(hl("PjollrigCommentAuthor").bold)
 
     -- And rendering still works: a card comes up without erroring.
-    require("manicule").add({
+    require("pjollrig").add({
       body = "transparent card",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -1194,9 +1194,9 @@ describe("manicule card palette", function()
   end)
 
   it("recomputes the palette when ColorScheme fires", function()
-    local blend = require("manicule.ui.color").blend
+    local blend = require("pjollrig.ui.color").blend
     stub_colorscheme()
-    assert.are.equal(0x89B4FA, hl("ManiculeCommentQuoteBar").fg)
+    assert.are.equal(0x89B4FA, hl("PjollrigCommentQuoteBar").fg)
 
     -- Change the source colors WITHOUT calling refresh directly — the
     -- setup() ColorScheme autocmd must recompute the groups.
@@ -1204,18 +1204,18 @@ describe("manicule card palette", function()
     vim.api.nvim_set_hl(0, "Normal", { fg = 0x111111, bg = 0xEEEEEE })
     vim.api.nvim_exec_autocmds("ColorScheme", {})
 
-    assert.are.equal(0x00FF00, hl("ManiculeCommentQuoteBar").fg)
-    assert.are.equal(blend(0xEEEEEE, 0x111111, 0.06), hl("ManiculeCardBg").bg)
-    assert.are.equal(0x111111, hl("ManiculeCommentAuthor").fg)
+    assert.are.equal(0x00FF00, hl("PjollrigCommentQuoteBar").fg)
+    assert.are.equal(blend(0xEEEEEE, 0x111111, 0.06), hl("PjollrigCardBg").bg)
+    assert.are.equal(0x111111, hl("PjollrigCommentAuthor").fg)
   end)
 
   it("splits the popup card into quote-bar, badge, author, and meta hl regions", function()
-    require("manicule.config").get().ui.icons = false
-    local render = require("manicule.ui.render")
+    require("pjollrig.config").get().ui.icons = false
+    local render = require("pjollrig.ui.render")
     local bufnr = vim.api.nvim_get_current_buf()
     local record = {
       id = "palette-gh-1",
-      uri = require("manicule.uri").for_bufnr(bufnr),
+      uri = require("pjollrig.uri").for_bufnr(bufnr),
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
       body = "palette body",
       author = "octocat",
@@ -1246,16 +1246,16 @@ describe("manicule card palette", function()
     end
 
     -- Quote row: the `▍ ` bar and the quote text are separate regions.
-    assert.are.same({ 0, #"▍ " }, regions[0]["ManiculeCommentQuoteBar"])
-    assert.are.same({ #"▍ ", #lines[1] }, regions[0]["ManiculeCommentQuote"])
+    assert.are.same({ 0, #"▍ " }, regions[0]["PjollrigCommentQuoteBar"])
+    assert.are.same({ #"▍ ", #lines[1] }, regions[0]["PjollrigCommentQuote"])
 
     -- Author row: badge → bold author name → dim time tail, adjacent.
-    assert.are.same({ 0, #"[gh] " }, regions[1]["ManiculeBadgeGithub"])
-    assert.are.same({ #"[gh] ", #"[gh] octocat" }, regions[1]["ManiculeCommentAuthor"])
-    assert.are.same({ #"[gh] octocat", #lines[2] }, regions[1]["ManiculeCommentMeta"])
+    assert.are.same({ 0, #"[gh] " }, regions[1]["PjollrigBadgeGithub"])
+    assert.are.same({ #"[gh] ", #"[gh] octocat" }, regions[1]["PjollrigCommentAuthor"])
+    assert.are.same({ #"[gh] octocat", #lines[2] }, regions[1]["PjollrigCommentMeta"])
 
     -- Body rows carry no card mark: the popup window's card surface
-    -- (winhighlight NormalFloat → ManiculeCardBg) paints them.
+    -- (winhighlight NormalFloat → PjollrigCardBg) paints them.
     assert.is_nil(regions[3])
   end)
 
@@ -1267,10 +1267,10 @@ describe("manicule card palette", function()
         end,
       }
     end
-    require("manicule.config").get().ui.icons = "auto"
-    require("manicule.ui.icons")._reset()
+    require("pjollrig.config").get().ui.icons = "auto"
+    require("pjollrig.ui.icons")._reset()
 
-    require("manicule").add({
+    require("pjollrig").add({
       body = "glyph local palette",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -1281,7 +1281,7 @@ describe("manicule card palette", function()
     local found
     for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(popup_buf, -1, 0, -1, { details = true })) do
       local details = mark[4] or {}
-      if details.hl_group == "ManiculeBadgeLocal" then
+      if details.hl_group == "PjollrigBadgeLocal" then
         found = mark
       end
     end

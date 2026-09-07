@@ -59,9 +59,9 @@ local function popup_title(winid)
 end
 
 ---Concatenated text of every eol virt-text extmark on `row` (0-indexed),
----in the manicule namespace. Empty string when the row carries none.
+---in the pjollrig namespace. Empty string when the row carries none.
 local function eol_virt_text(bufnr, row)
-  local ns = require("manicule.anchor").ns
+  local ns = require("pjollrig.anchor").ns
   local marks = vim.api.nvim_buf_get_extmarks(bufnr, ns, { row, 0 }, { row, -1 }, { details = true })
   local out = {}
   for _, mark in ipairs(marks) do
@@ -86,10 +86,10 @@ local function has_any_eol_virt_text(bufnr)
 end
 
 ---Rendered text of the virt_lines block(s) below `row` (0-indexed) in
----the manicule namespace: one string per virtual line (chunks joined).
+---the pjollrig namespace: one string per virtual line (chunks joined).
 ---Empty list when the row carries none.
 local function inline_virt_lines(bufnr, row)
-  local ns = require("manicule.anchor").ns
+  local ns = require("pjollrig.anchor").ns
   local marks = vim.api.nvim_buf_get_extmarks(bufnr, ns, { row, 0 }, { row, -1 }, { details = true })
   local out = {}
   for _, mark in ipairs(marks) do
@@ -106,9 +106,9 @@ local function inline_virt_lines(bufnr, row)
 end
 
 ---Raw `[text, hl]` chunk arrays of the virt_lines block(s) below `row`
----(0-indexed) in the manicule namespace: one entry per virtual line.
+---(0-indexed) in the pjollrig namespace: one entry per virtual line.
 local function inline_virt_chunks(bufnr, row)
-  local ns = require("manicule.anchor").ns
+  local ns = require("pjollrig.anchor").ns
   local marks = vim.api.nvim_buf_get_extmarks(bufnr, ns, { row, 0 }, { row, -1 }, { details = true })
   local out = {}
   for _, mark in ipairs(marks) do
@@ -122,7 +122,7 @@ end
 
 ---Number of extmarks on `row` that carry a virt_lines block.
 local function inline_block_count(bufnr, row)
-  local ns = require("manicule.anchor").ns
+  local ns = require("pjollrig.anchor").ns
   local marks = vim.api.nvim_buf_get_extmarks(bufnr, ns, { row, 0 }, { row, -1 }, { details = true })
   local count = 0
   for _, mark in ipairs(marks) do
@@ -153,12 +153,12 @@ local function move_cursor(bufnr, line)
   vim.api.nvim_exec_autocmds("CursorMoved", { buffer = bufnr })
 end
 
-describe("manicule display config", function()
+describe("pjollrig display config", function()
   before_each(setup_env)
   after_each(teardown_env)
 
   it("rejects an invalid ui.display_mode value", function()
-    local ok, err = pcall(require("manicule.config").setup, {
+    local ok, err = pcall(require("pjollrig.config").setup, {
       ui = { display_mode = "sideways" },
     })
     assert.is_false(ok)
@@ -167,12 +167,12 @@ describe("manicule display config", function()
   end)
 
   it("defaults to the eol display mode", function()
-    assert.are.equal("eol", require("manicule.config").get().ui.display_mode)
-    assert.are.equal("eol", require("manicule.ui.render").display_mode())
+    assert.are.equal("eol", require("pjollrig.config").get().ui.display_mode)
+    assert.are.equal("eol", require("pjollrig.ui.render").display_mode())
   end)
 
   it("rejects an invalid ui.eol_expand value", function()
-    local ok, err = pcall(require("manicule.config").setup, {
+    local ok, err = pcall(require("pjollrig.config").setup, {
       ui = { eol_expand = "sideways" },
     })
     assert.is_false(ok)
@@ -181,11 +181,11 @@ describe("manicule display config", function()
   end)
 
   it("defaults ui.eol_expand to float", function()
-    assert.are.equal("float", require("manicule.config").get().ui.eol_expand)
+    assert.are.equal("float", require("pjollrig.config").get().ui.eol_expand)
   end)
 
   it("rejects an unknown runtime mode without changing the current one", function()
-    local render = require("manicule.ui.render")
+    local render = require("pjollrig.ui.render")
     local mode, err = render.set_display_mode("bogus")
     assert.is_nil(mode)
     assert.is_truthy(tostring(err):find('"float", "eol", "inline", or "hidden"', 1, true))
@@ -193,31 +193,31 @@ describe("manicule display config", function()
   end)
 end)
 
-describe("manicule display command", function()
+describe("pjollrig display command", function()
   before_each(setup_env)
   after_each(teardown_env)
 
   it("completes the four display modes", function()
-    vim.cmd("runtime plugin/manicule.lua")
-    local all = vim.fn.getcompletion("ManiculeDisplay ", "cmdline")
+    vim.cmd("runtime plugin/pjollrig.lua")
+    local all = vim.fn.getcompletion("PjollrigDisplay ", "cmdline")
     table.sort(all)
     assert.are.same({ "eol", "float", "hidden", "inline" }, all)
-    assert.are.same({ "float" }, vim.fn.getcompletion("ManiculeDisplay f", "cmdline"))
+    assert.are.same({ "float" }, vim.fn.getcompletion("PjollrigDisplay f", "cmdline"))
   end)
 
-  it("exposes <Plug>(manicule-display-cycle)", function()
-    vim.cmd("runtime plugin/manicule.lua")
-    assert.is_true(vim.fn.maparg("<Plug>(manicule-display-cycle)", "n") ~= "")
+  it("exposes <Plug>(pjollrig-display-cycle)", function()
+    vim.cmd("runtime plugin/pjollrig.lua")
+    assert.is_true(vim.fn.maparg("<Plug>(pjollrig-display-cycle)", "n") ~= "")
   end)
 
   it("cycles float → eol → inline → hidden → float with live re-render", function()
-    vim.cmd("runtime plugin/manicule.lua")
-    local render = require("manicule.ui.render")
+    vim.cmd("runtime plugin/pjollrig.lua")
+    local render = require("pjollrig.ui.render")
     local bufnr = vim.api.nvim_get_current_buf()
 
     -- Keep the cursor OFF the comment line so eol mode stays collapsed.
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "cycle note",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -235,20 +235,20 @@ describe("manicule display command", function()
     assert.is_truthy(eol_virt_text(bufnr, 0):find("cycle note", 1, true))
 
     -- Explicit argument: float shows the popup and drops the marker.
-    vim.cmd("ManiculeDisplay float")
+    vim.cmd("PjollrigDisplay float")
     assert.are.equal("float", render.display_mode())
     assert.is_true(wait_for_popup_count("cycle note", 1))
     assert.are.equal("", eol_virt_text(bufnr, 0))
 
     -- Bare command cycles: float → eol.
-    vim.cmd("ManiculeDisplay")
+    vim.cmd("PjollrigDisplay")
     assert.are.equal("eol", render.display_mode())
     assert.is_true(wait_for_popup_count("cycle note", 0))
     assert.is_truthy(eol_virt_text(bufnr, 0):find("cycle note", 1, true))
 
     -- eol → inline: bordered virt_lines box below the anchor, no popup,
     -- no eol marker.
-    vim.cmd("ManiculeDisplay")
+    vim.cmd("PjollrigDisplay")
     assert.are.equal("inline", render.display_mode())
     assert.is_true(wait_for_popup_count("cycle note", 0))
     assert.are.equal("", eol_virt_text(bufnr, 0))
@@ -256,7 +256,7 @@ describe("manicule display command", function()
 
     -- inline → hidden: no popups, no virt text, no virt lines, anchors
     -- survive.
-    vim.cmd("ManiculeDisplay")
+    vim.cmd("PjollrigDisplay")
     assert.are.equal("hidden", render.display_mode())
     assert.is_true(wait_for_popup_count("cycle note", 0))
     assert.is_false(has_any_eol_virt_text(bufnr))
@@ -264,7 +264,7 @@ describe("manicule display command", function()
     assert.is_true(next(render.mark_ids_for_buffer(bufnr)) ~= nil)
 
     -- hidden → float: wraparound, popup returns.
-    vim.cmd("ManiculeDisplay")
+    vim.cmd("PjollrigDisplay")
     assert.are.equal("float", render.display_mode())
     assert.is_true(wait_for_popup_count("cycle note", 1))
 
@@ -273,23 +273,23 @@ describe("manicule display command", function()
     -- Every switch announced with the one-line notify.
     local announced = table.concat(notifications, "\n")
     for _, mode in ipairs({ "float", "eol", "inline", "hidden" }) do
-      assert.is_truthy(announced:find("manicule: display = " .. mode, 1, true))
+      assert.is_truthy(announced:find("pjollrig: display = " .. mode, 1, true))
     end
   end)
 end)
 
-describe("manicule eol display mode", function()
+describe("pjollrig eol display mode", function()
   before_each(setup_env)
   after_each(teardown_env)
 
   it("collapses to eol virt text with the truncated body and no popup", function()
     local bufnr = vim.api.nvim_get_current_buf()
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "first line of the note\nsecond line stays hidden",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
-    local records = require("manicule").list()
+    local records = require("pjollrig").list()
     local short = tostring(records[1].id):sub(1, 6)
 
     local text = eol_virt_text(bufnr, 0)
@@ -307,7 +307,7 @@ describe("manicule eol display mode", function()
   it("expands the real popup on the cursor line and closes it off-line", function()
     local bufnr = vim.api.nvim_get_current_buf()
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "expand me now",
       range = { start = { 1, 0 }, end_ = { 1, 0 } },
     })
@@ -320,8 +320,8 @@ describe("manicule eol display mode", function()
     assert.is_truthy(popup_title(winid):find("1/1", 1, true))
     -- Edit/delete keymaps stay reachable exactly as in float mode: the
     -- cursor hit-test they route through resolves the record here.
-    local records = require("manicule").list()
-    assert.are.equal(records[1].id, require("manicule.ui.render").record_at_cursor(bufnr))
+    local records = require("pjollrig").list()
+    assert.are.equal(records[1].id, require("pjollrig.ui.render").record_at_cursor(bufnr))
 
     -- Cursor off the line: popup closes, collapsed marker stays.
     move_cursor(bufnr, 1)
@@ -332,11 +332,11 @@ describe("manicule eol display mode", function()
   it("shows the stack position collapsed and expands the vertical stack", function()
     local bufnr = vim.api.nvim_get_current_buf()
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "stack alpha",
       range = { start = { 1, 0 }, end_ = { 1, 0 } },
     })
-    require("manicule").add({
+    require("pjollrig").add({
       body = "stack beta",
       range = { start = { 1, 0 }, end_ = { 1, 0 } },
     })
@@ -360,7 +360,7 @@ describe("manicule eol display mode", function()
 
   it("refreshes the expanded counter after a mutation on another line", function()
     local bufnr = vim.api.nvim_get_current_buf()
-    require("manicule").add({
+    require("pjollrig").add({
       body = "memo first",
       range = { start = { 1, 0 }, end_ = { 1, 0 } },
     })
@@ -372,7 +372,7 @@ describe("manicule eol display mode", function()
     -- so line 2's covering set is unchanged: the mutation's reconcile
     -- must drop any memoized display positions, and the refreshed
     -- expansion must read 1/2, not a stale 1/1.
-    require("manicule").add({
+    require("pjollrig").add({
       body = "memo second",
       range = { start = { 2, 0 }, end_ = { 2, 0 } },
     })
@@ -385,7 +385,7 @@ describe("manicule eol display mode", function()
 
   it("keeps the expanded popup open while the comment editor is up", function()
     local bufnr = vim.api.nvim_get_current_buf()
-    require("manicule").add({
+    require("pjollrig").add({
       body = "edit without closing",
       range = { start = { 1, 0 }, end_ = { 1, 0 } },
     })
@@ -394,14 +394,14 @@ describe("manicule eol display mode", function()
     local popup_winid = floating_windows_containing("edit without closing")[1]
 
     -- Open the comment editor from the expanded popup's record. Focus
-    -- moves into a manicule float; the BufLeave/WinLeave editor
+    -- moves into a pjollrig float; the BufLeave/WinLeave editor
     -- exception applies in eol mode too, so the popup must not close
     -- mid-edit. (The editor float shows the same body text, so assert
     -- on the popup's winid rather than a window count.)
-    local records = require("manicule").list()
-    require("manicule").edit(records[1].id)
+    local records = require("pjollrig").list()
+    require("pjollrig").edit(records[1].id)
     assert.is_true(vim.wait(1000, function()
-      return require("manicule.ui.editor").is_active()
+      return require("pjollrig.ui.editor").is_active()
     end, 10))
 
     vim.wait(50, function()
@@ -409,16 +409,16 @@ describe("manicule eol display mode", function()
     end, 10)
     assert.is_true(vim.api.nvim_win_is_valid(popup_winid))
 
-    require("manicule.ui.editor").close_active()
+    require("pjollrig.ui.editor").close_active()
     assert.is_true(vim.wait(1000, function()
-      return not require("manicule.ui.editor").is_active()
+      return not require("pjollrig.ui.editor").is_active()
     end, 10))
   end)
 
   it("truncates the collapsed body to the leftover window width", function()
     local bufnr = vim.api.nvim_get_current_buf()
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = string.rep("x", 300),
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -433,7 +433,7 @@ describe("manicule eol display mode", function()
   it("truncates a double-width body on whole-glyph boundaries", function()
     local bufnr = vim.api.nvim_get_current_buf()
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = string.rep("古", 200),
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -470,7 +470,7 @@ describe("manicule eol display mode", function()
     vim.wo.wrap = false
     local bufnr = vim.api.nvim_get_current_buf()
     move_cursor(bufnr, 4)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "eol avoids margin",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -494,11 +494,11 @@ describe("manicule eol display mode", function()
     })
     local bufnr = vim.api.nvim_get_current_buf()
     move_cursor(bufnr, 2)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "body that cannot fit",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
-    local records = require("manicule").list()
+    local records = require("pjollrig").list()
     local short = tostring(records[1].id):sub(1, 6)
 
     local text = eol_virt_text(bufnr, 0)
@@ -508,27 +508,27 @@ end)
 
 -- Origin badges on the collapsed eol marker: the leading chunk is the
 -- record's origin badge — github-imported records (`meta.github`) show
--- the GitHub badge on ManiculeBadgeGithubEol, local records the local
--- one on ManiculeBadgeLocalEol (fg-only variants of the card badge
+-- the GitHub badge on PjollrigBadgeGithubEol, local records the local
+-- one on PjollrigBadgeLocalEol (fg-only variants of the card badge
 -- groups: the marker sits on the editor line, never on a card). With
 -- icons disabled the local ASCII fallback IS today's `●`, so the
 -- icons-off default look stays byte-identical to before badges existed.
-describe("manicule eol origin badges", function()
+describe("pjollrig eol origin badges", function()
   before_each(setup_env)
 
   after_each(function()
     package.preload["mini.icons"] = nil
     package.loaded["mini.icons"] = nil
     pcall(function()
-      require("manicule.ui.icons")._reset()
+      require("pjollrig.ui.icons")._reset()
     end)
     teardown_env()
   end)
 
   ---First eol virt-text chunk (`[text, hl]`) on `row` (0-indexed), in
-  ---the manicule namespace. Nil when the row carries no eol marker.
+  ---the pjollrig namespace. Nil when the row carries no eol marker.
   local function first_eol_chunk(bufnr, row)
-    local ns = require("manicule.anchor").ns
+    local ns = require("pjollrig.anchor").ns
     local marks = vim.api.nvim_buf_get_extmarks(bufnr, ns, { row, 0 }, { row, -1 }, { details = true })
     for _, mark in ipairs(marks) do
       local details = mark[4] or {}
@@ -544,7 +544,7 @@ describe("manicule eol origin badges", function()
   local function github_record(bufnr)
     return {
       id = "ghimport-1",
-      uri = require("manicule.uri").for_bufnr(bufnr),
+      uri = require("pjollrig.uri").for_bufnr(bufnr),
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
       body = "imported note",
       author = "octocat",
@@ -565,13 +565,13 @@ describe("manicule eol origin badges", function()
         end,
       }
     end
-    require("manicule.config").get().ui.icons = "auto"
-    require("manicule.ui.icons")._reset()
+    require("pjollrig.config").get().ui.icons = "auto"
+    require("pjollrig.ui.icons")._reset()
   end
 
   it("marks imported records with the ASCII github badge when icons are off", function()
-    require("manicule.config").get().ui.icons = false
-    local render = require("manicule.ui.render")
+    require("pjollrig.config").get().ui.icons = false
+    local render = require("pjollrig.ui.render")
     local bufnr = vim.api.nvim_get_current_buf()
     local record = github_record(bufnr)
     render.reconcile(bufnr, { record }, { record })
@@ -581,54 +581,54 @@ describe("manicule eol origin badges", function()
     -- card surface — the marker sits on the editor line).
     local chunk = first_eol_chunk(bufnr, 0)
     assert.are.equal("[gh] ", chunk[1])
-    assert.are.equal("ManiculeBadgeGithubEol", chunk[2])
+    assert.are.equal("PjollrigBadgeGithubEol", chunk[2])
   end)
 
   it("marks imported records with the github glyph when a provider is loadable", function()
     enable_glyph_mode()
-    local render = require("manicule.ui.render")
+    local render = require("pjollrig.ui.render")
     local bufnr = vim.api.nvim_get_current_buf()
     local record = github_record(bufnr)
     render.reconcile(bufnr, { record }, { record })
 
     local chunk = first_eol_chunk(bufnr, 0)
     assert.are.equal("\u{F09B} ", chunk[1])
-    assert.are.equal("ManiculeBadgeGithubEol", chunk[2])
+    assert.are.equal("PjollrigBadgeGithubEol", chunk[2])
   end)
 
   it("marks local records with the local glyph when a provider is loadable", function()
     enable_glyph_mode()
     local bufnr = vim.api.nvim_get_current_buf()
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "local glyph note",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
 
     local chunk = first_eol_chunk(bufnr, 0)
     assert.are.equal("\u{F0B79} ", chunk[1])
-    assert.are.equal("ManiculeBadgeLocalEol", chunk[2])
+    assert.are.equal("PjollrigBadgeLocalEol", chunk[2])
   end)
 
   it("keeps today's ● marker byte-identically for local records with icons off", function()
-    require("manicule.config").get().ui.icons = false
+    require("pjollrig.config").get().ui.icons = false
     local bufnr = vim.api.nvim_get_current_buf()
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "plain local note",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
-    local records = require("manicule").list()
+    local records = require("pjollrig").list()
     local short = tostring(records[1].id):sub(1, 6)
 
     assert.are.equal("● c" .. short .. " · plain local note", eol_virt_text(bufnr, 0))
   end)
 end)
 
-describe("manicule inline display mode", function()
+describe("pjollrig inline display mode", function()
   before_each(function()
     setup_env()
-    require("manicule.ui.render").set_display_mode("inline")
+    require("pjollrig.ui.render").set_display_mode("inline")
   end)
   after_each(teardown_env)
 
@@ -636,11 +636,11 @@ describe("manicule inline display mode", function()
     local bufnr = vim.api.nvim_get_current_buf()
     move_cursor(bufnr, 3)
     local before = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "boxed body first\nboxed body second",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
-    local records = require("manicule").list()
+    local records = require("pjollrig").list()
     local short = tostring(records[1].id):sub(1, 6)
 
     local lines = inline_virt_lines(bufnr, 0)
@@ -685,16 +685,16 @@ describe("manicule inline display mode", function()
       end
       return nil
     end
-    assert.are.equal("ManiculeCommentQuoteBar", hl_of(chunks[2], "▍"))
-    assert.are.equal("ManiculeInlineQuote", hl_of(chunks[2], '"local value = 1"'))
-    assert.are.equal("▍ ", text_of(chunks[2], "ManiculeCommentQuoteBar"))
+    assert.are.equal("PjollrigCommentQuoteBar", hl_of(chunks[2], "▍"))
+    assert.are.equal("PjollrigInlineQuote", hl_of(chunks[2], '"local value = 1"'))
+    assert.are.equal("▍ ", text_of(chunks[2], "PjollrigCommentQuoteBar"))
     -- Author row: bold author-name chunk + dim `· just now` tail.
-    assert.is_truthy(text_of(chunks[3], "ManiculeCommentAuthor"))
-    assert.are.equal("ManiculeInlineMeta", hl_of(chunks[3], "· just now"))
-    assert.is_truthy(text_of(chunks[3], "ManiculeInlineMeta"):find("· just now", 1, true))
-    assert.is_nil(text_of(chunks[3], "ManiculeCommentAuthor"):find("·", 1, true))
-    assert.are.equal("ManiculeInlineBody", hl_of(chunks[5], "boxed body first"))
-    assert.are.equal("ManiculeCommentHint", hl_of(chunks[7], "edit gca | delete gcd"))
+    assert.is_truthy(text_of(chunks[3], "PjollrigCommentAuthor"))
+    assert.are.equal("PjollrigInlineMeta", hl_of(chunks[3], "· just now"))
+    assert.is_truthy(text_of(chunks[3], "PjollrigInlineMeta"):find("· just now", 1, true))
+    assert.is_nil(text_of(chunks[3], "PjollrigCommentAuthor"):find("·", 1, true))
+    assert.are.equal("PjollrigInlineBody", hl_of(chunks[5], "boxed body first"))
+    assert.are.equal("PjollrigCommentHint", hl_of(chunks[7], "edit gca | delete gcd"))
 
     -- The code lines themselves are untouched — the box is virtual only.
     assert.are.same(before, vim.api.nvim_buf_get_lines(bufnr, 0, -1, false))
@@ -706,17 +706,17 @@ describe("manicule inline display mode", function()
   it("renders a same-line stack as one block, in stack order with 1/2 2/2", function()
     local bufnr = vim.api.nvim_get_current_buf()
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "stack alpha",
       range = { start = { 1, 0 }, end_ = { 1, 0 } },
     })
-    require("manicule").add({
+    require("pjollrig").add({
       body = "stack beta",
       range = { start = { 1, 0 }, end_ = { 1, 0 } },
     })
 
     -- Expected order = the shared stack comparator (created_at, then id).
-    local records = require("manicule").list()
+    local records = require("pjollrig").list()
     table.sort(records, function(a, b)
       local ac = tonumber(a.created_at) or 0
       local bc = tonumber(b.created_at) or 0
@@ -746,7 +746,7 @@ describe("manicule inline display mode", function()
   it("keeps edit/delete reachable from the anchor line without a popup", function()
     local bufnr = vim.api.nvim_get_current_buf()
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "act on me",
       range = { start = { 1, 0 }, end_ = { 1, 0 } },
     })
@@ -761,15 +761,15 @@ describe("manicule inline display mode", function()
 
     -- The `<Plug>` edit/delete keymaps route through the same cursor
     -- hit-test as float/eol mode and still resolve the record here.
-    local records = require("manicule").list()
-    assert.are.equal(records[1].id, require("manicule.ui.render").record_at_cursor(bufnr))
+    local records = require("pjollrig").list()
+    assert.are.equal(records[1].id, require("pjollrig.ui.render").record_at_cursor(bufnr))
   end)
 
   it("wraps a long body line to the box width", function()
     local bufnr = vim.api.nvim_get_current_buf()
     move_cursor(bufnr, 3)
     local body = ("wrap "):rep(40):gsub("%s+$", "")
-    require("manicule").add({
+    require("pjollrig").add({
       body = body,
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -795,7 +795,7 @@ describe("manicule inline display mode", function()
     -- One long spaceless CJK "word" (160 cells): forces the wrap path's
     -- hard-break char walk, where a glyph split would show as broken
     -- bytes and an off-by-one width.
-    require("manicule").add({
+    require("pjollrig").add({
       body = string.rep("古", 80),
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -821,7 +821,7 @@ describe("manicule inline display mode", function()
   it("anchors a multi-line record's box at the range start line", function()
     local bufnr = vim.api.nvim_get_current_buf()
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "range note",
       range = { start = { 0, 0 }, end_ = { 1, 0 } },
     })
@@ -830,11 +830,11 @@ describe("manicule inline display mode", function()
     assert.are.same({}, inline_virt_lines(bufnr, 1))
   end)
 
-  it("clears the boxes on :ManiculeToggle and restores them on toggle back", function()
-    local render = require("manicule.ui.render")
+  it("clears the boxes on :PjollrigToggle and restores them on toggle back", function()
+    local render = require("pjollrig.ui.render")
     local bufnr = vim.api.nvim_get_current_buf()
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "toggle me away",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })

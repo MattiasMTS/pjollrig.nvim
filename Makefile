@@ -6,7 +6,7 @@ test:
 	@scripts/test
 
 test-unit:
-	@scripts/test tests/manicule
+	@scripts/test tests/pjollrig
 
 test-integration:
 	@scripts/test tests/integration

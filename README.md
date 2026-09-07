@@ -1,8 +1,15 @@
-# manicule.nvim
+# pjollrig.nvim
+
+**Review the diff. Leave a note. Cut the pjoller.**
+
+> **pjollrig** · Swedish adjective · roughly **PYOLL-ri(g)**, stress on the
+> first syllable; `pj` sounds like the `py` in “pure”.
+> [Silly, chatty, or prone to idle chatter](https://www.synonymer.se/sv-syn/pjollrig).
+> A playful nod to the northern Swedish *pjoller*: chatter and nonsense.
 
 Persistent review comments for Neovim.
 
-manicule.nvim lets you attach notes to lines or ranges in any buffer, keep
+pjollrig.nvim lets you attach notes to lines or ranges in any buffer, keep
 them anchored with extmarks as text moves, browse them in the comments
 panel, and send them to a sink such as the clipboard or a running
 coding-agent surface.
@@ -19,8 +26,8 @@ a review batch.
   terminals, and help buffers.
 - Four comment display modes — end-of-line virtual text (default), floating
   popups, inline boxes, or hidden anchors — cycled live with
-  `:ManiculeDisplay`.
-- Diff-review sessions (`:ManiculeReview`) over uncommitted changes, a git
+  `:PjollrigDisplay`.
+- Diff-review sessions (`:PjollrigReview`) over uncommitted changes, a git
   ref, a GitHub PR, or two directories.
 - A comments panel for scanning, jumping, editing, and deleting comments —
   the quickfix list stays yours.
@@ -40,7 +47,7 @@ event payloads.
 - The default project store uses the local SQLite library through LuaJIT
   FFI; most Neovim builds can load `libsqlite3` already.
 
-Run `:checkhealth manicule` after setup to verify the store directory, SQLite
+Run `:checkhealth pjollrig` after setup to verify the store directory, SQLite
 support, clipboard support, and registered sinks.
 
 ## Install
@@ -49,23 +56,23 @@ With [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ```lua
 {
-  "MattiasMTS/manicule.nvim",
+  "MattiasMTS/pjollrig.nvim",
   event = { "BufReadPost", "BufNewFile" },
   cmd = {
-    "ManiculeAdd",
-    "ManiculeList",
-    "ManiculeNext",
-    "ManiculePrev",
-    "ManiculeSend",
-    "ManiculeReview",
-    "ManiculeReviewNext",
-    "ManiculeReviewPrev",
-    "ManiculeReviewFinish",
-    "ManiculeReviewStop",
+    "PjollrigAdd",
+    "PjollrigList",
+    "PjollrigNext",
+    "PjollrigPrev",
+    "PjollrigSend",
+    "PjollrigReview",
+    "PjollrigReviewNext",
+    "PjollrigReviewPrev",
+    "PjollrigReviewFinish",
+    "PjollrigReviewStop",
   },
   keys = {
-    { "<leader>ma", "<Plug>(manicule-add)", mode = { "n", "x" }, desc = "Manicule: add comment" },
-    { "<leader>ml", "<Plug>(manicule-list)", desc = "Manicule: list comments" },
+    { "<leader>ma", "<Plug>(pjollrig-add)", mode = { "n", "x" }, desc = "Pjollrig: add comment" },
+    { "<leader>ml", "<Plug>(pjollrig-list)", desc = "Pjollrig: list comments" },
   },
   opts = {},
 }
@@ -74,36 +81,50 @@ With [lazy.nvim](https://github.com/folke/lazy.nvim):
 Use an event trigger because setup registers the autocmds that attach existing
 records to loaded buffers.
 
+### Previously manicule.nvim
+
+Update your plugin spec to `MattiasMTS/pjollrig.nvim`, Lua imports to
+`require("pjollrig")`, commands from `Manicule…` to `Pjollrig…`, and
+`<Plug>(manicule-…)` mappings to `<Plug>(pjollrig-…)`. Custom highlights and
+`User` events also use the `Pjollrig` prefix; plugin globals use `pjollrig`.
+The old API names are not aliases. Your own leader keys can stay the same.
+
+The default comment store remains `stdpath("state")/manicule/`, and existing
+scratch-buffer URIs and cached chat-document paths retain their identities.
+There is no data migration. An explicitly configured `store.dir` still wins.
+If you use lazy.nvim's `dev = true`, rename your local checkout to
+`pjollrig.nvim` or set `dir` to its existing path.
+
 ## Usage
 
 ```vim
-:ManiculeAdd            " add a comment on the current line or visual range
-:ManiculeList           " open all project comments in the comments panel
-:ManiculeEdit           " pick a comment to edit, or pass a list position
-:ManiculeDelete         " pick a comment to delete, or pass a list position
-:ManiculeResolve        " pick a comment to mark resolved
-:ManiculeToggle         " hide or restore all comment visuals; during a review session, shows/hides the review panel
-:ManiculeDisplay [mode] " set the comment display mode; bare command cycles
-:ManiculeNext [count]   " jump to the next comment in the current buffer
-:ManiculePrev [count]   " jump to the previous comment in the current buffer
-:ManiculeSend [sink]    " send comments to a sink
+:PjollrigAdd            " add a comment on the current line or visual range
+:PjollrigList           " open all project comments in the comments panel
+:PjollrigEdit           " pick a comment to edit, or pass a list position
+:PjollrigDelete         " pick a comment to delete, or pass a list position
+:PjollrigResolve        " pick a comment to mark resolved
+:PjollrigToggle         " hide or restore all comment visuals; during a review session, shows/hides the review panel
+:PjollrigDisplay [mode] " set the comment display mode; bare command cycles
+:PjollrigNext [count]   " jump to the next comment in the current buffer
+:PjollrigPrev [count]   " jump to the previous comment in the current buffer
+:PjollrigSend [sink]    " send comments to a sink
 ```
 
-`:ManiculeAdd` opens a small markdown buffer in insert mode. `<Esc>` then
+`:PjollrigAdd` opens a small markdown buffer in insert mode. `<Esc>` then
 `<CR>` submits, `q` in normal mode cancels, and moving focus out of the
 floating editor discards the draft.
 
-Default keymaps (set `vim.g.manicule_no_default_keymaps = 1` before loading
+Default keymaps (set `vim.g.pjollrig_no_default_keymaps = 1` before loading
 to opt out):
 
 - `gca` / `gcd` edit / delete the comment at or covering the cursor.
 - `]m` / `[m` jump to the next / previous comment in the current buffer.
 
 Core actions are also exposed as `<Plug>` maps for your own bindings:
-`(manicule-add)`, `(manicule-list)`, `(manicule-next)`, `(manicule-prev)`,
-`(manicule-edit)`, `(manicule-delete)`, `(manicule-toggle)`,
-`(manicule-display-cycle)`, `(manicule-review-next)`,
-`(manicule-review-prev)`, and `(manicule-review-diff-mode)`.
+`(pjollrig-add)`, `(pjollrig-list)`, `(pjollrig-next)`, `(pjollrig-prev)`,
+`(pjollrig-edit)`, `(pjollrig-delete)`, `(pjollrig-toggle)`,
+`(pjollrig-display-cycle)`, `(pjollrig-review-next)`,
+`(pjollrig-review-prev)`, and `(pjollrig-review-diff-mode)`.
 
 ### Display modes
 
@@ -116,10 +137,10 @@ Core actions are also exposed as `<Plug>` maps for your own bindings:
   pushed down, never covered.
 - `hidden` — anchor extmarks and line-number tint only.
 
-`:ManiculeDisplay <mode>` switches live; a bare `:ManiculeDisplay` cycles
+`:PjollrigDisplay <mode>` switches live; a bare `:PjollrigDisplay` cycles
 `float → eol → inline → hidden`. The startup mode comes from `ui.display_mode`;
 runtime switches are in-memory and reset when Neovim restarts. Map
-`<Plug>(manicule-display-cycle)` to cycle from a keymap.
+`<Plug>(pjollrig-display-cycle)` to cycle from a keymap.
 
 The expanded comment card (shared by `eol` and `float`):
 
@@ -140,7 +161,7 @@ from the commented line in every mode.
 
 ## Comments panel
 
-`:ManiculeList` opens the comments panel: an owned `manicule://panel`
+`:PjollrigList` opens the comments panel: an owned `pjollrig://panel`
 buffer placed by `review.panel.position` (bottom split by default),
 showing a single `Comments N · project` tab with one row per comment —
 `[ ] path:line  first body line`, paths relative to the project root,
@@ -151,46 +172,46 @@ resolved rows dimmed. The quickfix list is never touched.
 - `ce` edits the comment under the cursor.
 - `u` undoes the last comment deletion (multi-level; repeat to undo more).
 - `<C-r>` redoes the last undone deletion (multi-level; a new deletion clears the redo branch).
-- `q` closes the panel; `:ManiculeList` reopens it.
+- `q` closes the panel; `:PjollrigList` reopens it.
 
 The rows refresh in place when comments are added, edited, deleted,
 restored, resolved, or synced from another Neovim session. During a
-review session, `:ManiculeList` instead focuses the review panel on its
+review session, `:PjollrigList` instead focuses the review panel on its
 Comments tab.
 
 ## Review mode
 
-`:ManiculeReview` opens a diff-review session: baseline versions staged on
+`:PjollrigReview` opens a diff-review session: baseline versions staged on
 the left (read-only), your working tree on the right. Comment on the right
-side as usual, then send the batch with `:ManiculeReviewFinish [sink]`.
+side as usual, then send the batch with `:PjollrigReviewFinish [sink]`.
 
-    :ManiculeReview              " uncommitted changes (vs HEAD)
-    :ManiculeReview main         " your branch vs merge-base with main
-    :ManiculeReview pr 123       " a GitHub PR (requires gh CLI)
-    :ManiculeReview chat         " a Claude Code assistant turn, as a markdown document
-    :ManiculeReview <dirA> <dirB> " any two directories
-    :ManiculeReviewNext          " next changed file
-    :ManiculeReviewPrev          " previous changed file
-    :ManiculeReviewFinish [sink] " send comments to a sink (optional arg)
-    :ManiculeReviewStop          " close the session
-    :ManiculeReviewDiffMode      " toggle split <-> unified (or name one)
+    :PjollrigReview              " uncommitted changes (vs HEAD)
+    :PjollrigReview main         " your branch vs merge-base with main
+    :PjollrigReview pr 123       " a GitHub PR (requires gh CLI)
+    :PjollrigReview chat         " a Claude Code assistant turn, as a markdown document
+    :PjollrigReview <dirA> <dirB> " any two directories
+    :PjollrigReviewNext          " next changed file
+    :PjollrigReviewPrev          " previous changed file
+    :PjollrigReviewFinish [sink] " send comments to a sink (optional arg)
+    :PjollrigReviewStop          " close the session
+    :PjollrigReviewDiffMode      " toggle split <-> unified (or name one)
 
-`review.diff_mode` picks how a pair renders; `:ManiculeReviewDiffMode` flips it
+`review.diff_mode` picks how a pair renders; `:PjollrigReviewDiffMode` flips it
 mid-session. `split` (default) is a side-by-side `:diffsplit` pair.
 `unified` shows one window — the worktree file — with the diff painted on:
 added lines highlighted, removed lines drawn as virtual text where they
 used to sit, and unchanged regions folded away (tune with
 `review.fold_unchanged` and `review.context`; `za`/`zR` behave as usual).
 Comments anchor to true worktree line numbers in both modes, so
-`:ManiculeSend github` posts them at the same lines either way; removed
+`:PjollrigSend github` posts them at the same lines either way; removed
 lines and the read-only baseline side are not commentable. `]h` / `[h`
 jump between hunks (wrapping).
 
 Each review window carries a winbar breadcrumb — `path · M · +12 −4` on
 the worktree side, `path · baseline` on the read-only side.
 
-A panel opens automatically: a plain `manicule://panel` buffer (filetype
-`manicule-panel`), so the global quickfix list stays free during the
+A panel opens automatically: a plain `pjollrig://panel` buffer (filetype
+`pjollrig-panel`), so the global quickfix list stays free during the
 review. `review.panel.position` places it: `"bottom"` split (default),
 `"left"`/`"right"` full-height column, or a centered `"float"` that
 takes focus (`q` closes it; `review.panel.size` overrides rows/columns
@@ -202,7 +223,7 @@ and a live comment count (colored filetype icons when an icon provider
 is installed — see `ui.icons`), and the pair on screen is marked with
 `▸`, a highlighted line, and a bold filename.
 
-Files you navigate away from with `:ManiculeReviewNext`/`Prev` (or
+Files you navigate away from with `:PjollrigReviewNext`/`Prev` (or
 `<Tab>`/`<S-Tab>` in a review buffer) are marked viewed — `✓` and dimmed
 in the panel, with progress (`3/12 viewed`) in the panel's winbar — and
 skipped by further next/prev while unviewed files remain. `v` in the
@@ -214,15 +235,15 @@ file (`<CR>` jumps to a comment, `dd` deletes, `ce` edits, `u`/`<C-r>`
 undo/redo a deletion, `<Esc>` goes back; switching tabs also clears
 the scope); `<CR>` on a file without comments switches the diff to
 that pair, and `o` always opens the pair. `v` toggles viewed. `t`
-toggles the Files tab's layout (below). `:ManiculeToggle` shows/hides
-the panel during a review. Running `:ManiculeReview pr` with no number
+toggles the Files tab's layout (below). `:PjollrigToggle` shows/hides
+the panel during a review. Running `:PjollrigReview pr` with no number
 opens a picker over the repository's open PRs.
 
 The Files tab has two layouts — `"flat"` (the default; set
 `review.panel.layout` to change it) lists one full path per line, and
 `t` toggles into a `"tree"` layout for the rest of the session: the
 same files grouped by directory, Pierre-style, with two-space nesting,
-single-child chains collapsed into one row (`lua/manicule`), and each
+single-child chains collapsed into one row (`lua/pjollrig`), and each
 `▾`/`▸` directory row rolling up its subtree's diffstat, comment count,
 and viewed state (`●` while any file inside is unviewed, `✓` once all
 are). `<CR>` or `za` on a directory row collapses or expands it — the
@@ -231,7 +252,7 @@ whole subtree viewed. File rows behave identically in both layouts
 (`<CR>` drills into comments or opens the pair, `o` always opens).
 
 Plugins can add their own panel tabs after the builtin Files/Comments
-pair with `require("manicule").register_review_tab({...})`: a unique
+pair with `require("pjollrig").register_review_tab({...})`: a unique
 `name`, a winbar `title` (a string, or a function for a live count like
 `Checks 7/9`), and a `build(ctx)` returning the rows to render.
 Optional extras: `available(session)` gates the tab per session,
@@ -243,22 +264,22 @@ after an async fetch. See ARCHITECTURE.md ("Extension Points") for the
 full spec.
 
 When you review a PR with its head checked out, existing GitHub review
-comments are imported as manicule records and render inline. They can be
+comments are imported as pjollrig records and render inline. They can be
 edited or deleted locally (changes never sync back to GitHub) and are
-excluded from `:ManiculeReviewFinish` and the `github` sink, so GitHub's
+excluded from `:PjollrigReviewFinish` and the `github` sink, so GitHub's
 own comments are never echoed back as a new review; re-running
-`:ManiculeReview pr N` never duplicates them. In the panel's comments
+`:PjollrigReview pr N` never duplicates them. In the panel's comments
 view, `r` replies to an imported comment's thread (the reply is stored
 locally and posted by the next `github` send) and `gr` toggles the
 thread's resolved state on GitHub; resolved threads are prefixed with `✓`.
 
-`:ManiculeReview chat` reviews what a coding agent *wrote* rather than what
+`:PjollrigReview chat` reviews what a coding agent *wrote* rather than what
 it changed. It lists the Claude Code sessions for the current directory
 (read from `~/.claude/projects`, newest first — `Title · age · branch ·
 size`), then the session's assistant turns (`HH:MM  first line  (n
 lines)`), and opens the picked turn's text as a markdown document in the
 normal review session: comment on the plan or report line by line, then
-send the batch with `:ManiculeReviewFinish`. `chat <n>` skips both pickers
+send the batch with `:PjollrigReviewFinish`. `chat <n>` skips both pickers
 and takes the newest session's n-th turn (1 = latest; `<Tab>` completes the
 numbers), `chat all` picks across every project, and a single session for
 the directory skips straight to its turns. One-line narration between tool
@@ -266,7 +287,7 @@ calls is left out of the picker. The transcripts are read, never modified;
 the keyword does nothing useful until Claude Code has run in the directory.
 
 External tools can drive a review session by writing a JSON job file and
-calling `require("manicule.review").start_from_job(path)`; comments return
+calling `require("pjollrig.review").start_from_job(path)`; comments return
 through the bundled `socket` sink as JSONL over a unix socket.
 
 ## Configuration
@@ -274,7 +295,7 @@ through the bundled `socket` sink as JSONL over a unix socket.
 All keys are optional.
 
 ```lua
-require("manicule").setup({
+require("pjollrig").setup({
   store = {
     dir = vim.fn.stdpath("state") .. "/manicule/",
     format = "mpack", -- session store: "mpack" or "json"
@@ -335,7 +356,7 @@ text (`[gh]`, `●`, `✓`).
 
 ## Lua API
 
-`require("manicule")` exposes:
+`require("pjollrig")` exposes:
 
 - `setup(opts)` — merge config (see Configuration) and wire the autocmds.
 - `add(opts?)` — comment on the current line / visual selection, or `opts.range`; `opts.body` skips the editor prompt.
@@ -346,11 +367,11 @@ text (`[gh]`, `●`, `✓`).
 - `send(sink?, filter?, ctx?, opts?)` — dispatch listed comments to a sink (nil sink prompts through the picker).
 - `register_sink(spec)` / `register_review_tab(spec)` / `register_review_source(resolver)` — the three extension registries.
 
-Review sessions are driven from `require("manicule.review")`:
+Review sessions are driven from `require("pjollrig.review")`:
 `start`, `open_pair`, `next`, `prev`, `set_diff_mode`, `finish`, `stop`,
 `state`, `diffstat`, and `start_from_job`. See
 [ARCHITECTURE.md](./ARCHITECTURE.md) for extension authoring (sinks,
-panel tabs, review sources) and the `manicule.review.git` helpers
+panel tabs, review sources) and the `pjollrig.review.git` helpers
 available to resolver authors.
 
 ## Storage
@@ -367,19 +388,19 @@ file. Stores live under `store.dir`; by default that is:
 
 ## Sinks
 
-Sinks receive comment batches from `:ManiculeSend`.
+Sinks receive comment batches from `:PjollrigSend`.
 
 Built-ins:
 
 - `clipboard` copies formatted comments to the `+` register.
 - `cmux` sends a markdown review batch to a cmux coding-agent surface
   (Claude Code, Codex, Amp, and Pi are discovered through cmux metadata)
-  and keeps comments in Manicule by default so you can verify fixes before
+  and keeps comments in Pjollrig by default so you can verify fixes before
   resolving them. Pasting and submission behavior is tuned with the `cmux`
   options shown in the configuration example above.
 - `github` posts the batch as a pull-request review via the `gh` CLI
   (options: `event`, `pre_text`, `clear_on_success`; PR taken from `ctx.pr`
-  or the current branch). `:ManiculeSend github
+  or the current branch). `:PjollrigSend github
   [comment|approve|request-changes]` picks the review verdict for that
   send, overriding the configured `event`. Records created with the review
   panel's `r` reply action are posted as thread replies instead of review
@@ -391,7 +412,7 @@ The bundled text sinks (`clipboard`, `cmux`) also accept `pre_text` and
 Register a custom sink:
 
 ```lua
-require("manicule").register_sink({
+require("pjollrig").register_sink({
   name = "mytool",
   label = "My Tool",
   pre_text = "Optional text before formatted comments.",
@@ -415,20 +436,20 @@ successful dispatch deletes the sent comments.
 
 ## Events
 
-manicule emits native `User` autocmds:
+pjollrig emits native `User` autocmds:
 
 ```lua
 vim.api.nvim_create_autocmd("User", {
-  pattern = "ManiculeAdded",
+  pattern = "PjollrigAdded",
   callback = function(ev)
     vim.print(ev.data)
   end,
 })
 ```
 
-Events: `ManiculeAdded`, `ManiculeEdited`, `ManiculeDeleted`,
-`ManiculeRestored`, `ManiculeResolved`, `ManiculeSent`, `ManiculeSynced`,
-`ManiculeOrphaned`, `ManiculeRenamed`, and `ManiculeVisibility`.
+Events: `PjollrigAdded`, `PjollrigEdited`, `PjollrigDeleted`,
+`PjollrigRestored`, `PjollrigResolved`, `PjollrigSent`, `PjollrigSynced`,
+`PjollrigOrphaned`, `PjollrigRenamed`, and `PjollrigVisibility`.
 
 ## Notes
 

@@ -5,7 +5,7 @@ local cwd = uv.cwd()
 
 local args = {}
 local offline = vim.env.LAZY_OFFLINE == "1" or vim.env.LAZY_OFFLINE == "true"
-local filter_pattern = vim.env.MANICULE_TEST_FILTER
+local filter_pattern = vim.env.PJOLLRIG_TEST_FILTER
 for _, arg in ipairs(_G.arg or {}) do
   if arg == "--minitest" then
     -- Compatibility with the previous lazy.minit-based command.
