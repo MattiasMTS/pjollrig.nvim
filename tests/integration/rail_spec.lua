@@ -21,10 +21,10 @@ local function teardown_env()
     return false
   end, 10)
   pcall(function()
-    require("manicule.ui.rail").close()
+    require("pjollrig.ui.rail").close()
   end)
   pcall(function()
-    require("manicule.review").stop()
+    require("pjollrig.review").stop()
   end)
   H.teardown(ctx)
   ctx = nil
@@ -36,7 +36,7 @@ local function find_rail_win()
   for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
     if vim.api.nvim_win_is_valid(winid) then
       local bufnr = vim.api.nvim_win_get_buf(winid)
-      if vim.bo[bufnr].filetype == "manicule-rail" then
+      if vim.bo[bufnr].filetype == "pjollrig-rail" then
         return winid
       end
     end
@@ -109,7 +109,7 @@ local function leading_blanks(lines)
   return count
 end
 
-describe("manicule rail expansion", function()
+describe("pjollrig rail expansion", function()
   before_each(setup_env)
   after_each(teardown_env)
 
@@ -117,7 +117,7 @@ describe("manicule rail expansion", function()
     local bufnr = vim.api.nvim_get_current_buf()
     local code_win = vim.api.nvim_get_current_win()
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "rail note",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -135,8 +135,8 @@ describe("manicule rail expansion", function()
     local cfg = vim.api.nvim_win_get_config(rail_win)
     assert.is_true(cfg.relative == nil or cfg.relative == "")
     local rail_buf = vim.api.nvim_win_get_buf(rail_win)
-    assert.are.equal("manicule-rail", vim.bo[rail_buf].filetype)
-    assert.is_truthy(vim.api.nvim_buf_get_name(rail_buf):find("manicule://rail", 1, true))
+    assert.are.equal("pjollrig-rail", vim.bo[rail_buf].filetype)
+    assert.is_truthy(vim.api.nvim_buf_get_name(rail_buf):find("pjollrig://rail", 1, true))
 
     -- Scratch buffer, not modifiable; chrome-free fixed-width window.
     assert.are.equal("nofile", vim.bo[rail_buf].buftype)
@@ -156,7 +156,7 @@ describe("manicule rail expansion", function()
 
     -- The collapsed eol marker still renders (rail replaces only the
     -- expansion, not the marker).
-    local ns = require("manicule.anchor").ns
+    local ns = require("pjollrig.anchor").ns
     local marks = vim.api.nvim_buf_get_extmarks(bufnr, ns, { 0, 0 }, { 0, -1 }, { details = true })
     local has_eol = false
     for _, mark in ipairs(marks) do
@@ -171,11 +171,11 @@ describe("manicule rail expansion", function()
   it("renders the shared card stack with highlight extmarks", function()
     local bufnr = vim.api.nvim_get_current_buf()
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "rail body first\nrail body second",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
-    local records = require("manicule").list()
+    local records = require("pjollrig").list()
     local short = tostring(records[1].id):sub(1, 6)
 
     move_cursor(bufnr, 1)
@@ -225,20 +225,20 @@ describe("manicule rail expansion", function()
       end
       return nil
     end
-    assert.is_truthy(hl[row_of('▍ "local value = 1"')]["ManiculeCommentQuoteBar"])
-    assert.is_truthy(hl[row_of('▍ "local value = 1"')]["ManiculeInlineQuote"])
-    assert.is_truthy(hl[row_of("· just now")]["ManiculeCommentAuthor"])
-    assert.is_truthy(hl[row_of("· just now")]["ManiculeInlineMeta"])
-    assert.is_truthy(hl[row_of("rail body first")]["ManiculeInlineBody"])
-    assert.is_truthy(hl[row_of("edit gca | delete gcd")]["ManiculeCommentHint"])
-    assert.is_truthy(hl[row_of("┌")]["ManiculeInlineBorder"])
+    assert.is_truthy(hl[row_of('▍ "local value = 1"')]["PjollrigCommentQuoteBar"])
+    assert.is_truthy(hl[row_of('▍ "local value = 1"')]["PjollrigInlineQuote"])
+    assert.is_truthy(hl[row_of("· just now")]["PjollrigCommentAuthor"])
+    assert.is_truthy(hl[row_of("· just now")]["PjollrigInlineMeta"])
+    assert.is_truthy(hl[row_of("rail body first")]["PjollrigInlineBody"])
+    assert.is_truthy(hl[row_of("edit gca | delete gcd")]["PjollrigCommentHint"])
+    assert.is_truthy(hl[row_of("┌")]["PjollrigInlineBorder"])
   end)
 
   it("aligns the first card to the anchor line's screen row", function()
     local bufnr = vim.api.nvim_get_current_buf()
     local code_win = vim.api.nvim_get_current_win()
     move_cursor(bufnr, 1)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "align me",
       range = { start = { 3, 0 }, end_ = { 3, 0 } },
     })
@@ -262,11 +262,11 @@ describe("manicule rail expansion", function()
   it("stacks two same-line records as two boxes in order", function()
     local bufnr = vim.api.nvim_get_current_buf()
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "stack alpha",
       range = { start = { 1, 0 }, end_ = { 1, 0 } },
     })
-    require("manicule").add({
+    require("pjollrig").add({
       body = "stack beta",
       range = { start = { 1, 0 }, end_ = { 1, 0 } },
     })
@@ -293,11 +293,11 @@ describe("manicule rail expansion", function()
   it("re-renders when moving between commented lines", function()
     local bufnr = vim.api.nvim_get_current_buf()
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "first note",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
-    require("manicule").add({
+    require("pjollrig").add({
       body = "fourth note",
       range = { start = { 3, 0 }, end_ = { 3, 0 } },
     })
@@ -321,7 +321,7 @@ describe("manicule rail expansion", function()
   it("clears the cards on an uncommented line but keeps the rail open", function()
     local bufnr = vim.api.nvim_get_current_buf()
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "calm note",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -348,7 +348,7 @@ describe("manicule rail expansion", function()
   it("skips the buffer rebuild when nothing changed", function()
     local bufnr = vim.api.nvim_get_current_buf()
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "steady note",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -382,7 +382,7 @@ describe("manicule rail expansion", function()
     local bufnr = vim.api.nvim_get_current_buf()
     local code_win = vim.api.nvim_get_current_win()
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "original body",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -395,8 +395,8 @@ describe("manicule rail expansion", function()
 
     -- Drive the render seam directly (the same call render.lua's
     -- dispatch makes) so the guard is exercised deterministically.
-    local rail = require("manicule.ui.rail")
-    local record = require("manicule").list()[1]
+    local rail = require("pjollrig.ui.rail")
+    local record = require("pjollrig").list()[1]
     local opts = {
       bufnr = bufnr,
       winid = code_win,
@@ -422,7 +422,7 @@ describe("manicule rail expansion", function()
     local bufnr = vim.api.nvim_get_current_buf()
     local code_win = vim.api.nvim_get_current_win()
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "resize note",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -433,8 +433,8 @@ describe("manicule rail expansion", function()
       return false
     end, 10)
 
-    local rail = require("manicule.ui.rail")
-    local record = require("manicule").list()[1]
+    local rail = require("pjollrig.ui.rail")
+    local record = require("pjollrig").list()[1]
     local opts = {
       bufnr = bufnr,
       winid = code_win,
@@ -459,7 +459,7 @@ describe("manicule rail expansion", function()
     local bufnr = vim.api.nvim_get_current_buf()
     local code_win = vim.api.nvim_get_current_win()
     move_cursor(bufnr, 30)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "scroll note",
       range = { start = { 29, 0 }, end_ = { 29, 0 } },
     })
@@ -487,7 +487,7 @@ describe("manicule rail expansion", function()
   it("repeated clears keep the rail buffer untouched", function()
     local bufnr = vim.api.nvim_get_current_buf()
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "clear once",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -520,32 +520,32 @@ describe("manicule rail expansion", function()
   it("closes the rail when the display mode leaves eol", function()
     local bufnr = vim.api.nvim_get_current_buf()
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "mode switch note",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
     move_cursor(bufnr, 1)
     assert.is_truthy(wait_for_rail())
 
-    require("manicule.ui.render").set_display_mode("float")
+    require("pjollrig.ui.render").set_display_mode("float")
     assert.is_true(vim.wait(1000, function()
       return find_rail_win() == nil
     end, 10))
-    assert.is_false(require("manicule.ui.rail").is_open())
+    assert.is_false(require("pjollrig.ui.rail").is_open())
   end)
 
   it("closes the rail when the buffer's records disappear", function()
     local bufnr = vim.api.nvim_get_current_buf()
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "goes away",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
     move_cursor(bufnr, 1)
     assert.is_truthy(wait_for_rail())
 
-    local records = require("manicule").list()
-    require("manicule").delete(records[1].id)
+    local records = require("pjollrig").list()
+    require("pjollrig").delete(records[1].id)
     assert.is_true(vim.wait(1000, function()
       return find_rail_win() == nil
     end, 10))
@@ -555,7 +555,7 @@ describe("manicule rail expansion", function()
     local bufnr = vim.api.nvim_get_current_buf()
     local code_win = vim.api.nvim_get_current_win()
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "window bound",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -572,14 +572,14 @@ describe("manicule rail expansion", function()
   end)
 
   it("close() is idempotent and leaves no autocmds", function()
-    local rail = require("manicule.ui.rail")
+    local rail = require("pjollrig.ui.rail")
     -- Closing a never-opened rail is a no-op.
     rail.close()
     rail.close()
 
     local bufnr = vim.api.nvim_get_current_buf()
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "close me",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -590,7 +590,7 @@ describe("manicule rail expansion", function()
     assert.is_nil(find_rail_win())
     assert.is_false(rail.is_open())
     -- The dedicated augroup is torn down with the window.
-    assert.is_false(pcall(vim.api.nvim_get_autocmds, { group = "ManiculeRail" }))
+    assert.is_false(pcall(vim.api.nvim_get_autocmds, { group = "PjollrigRail" }))
     -- Second close: still a no-op.
     rail.close()
     assert.is_nil(find_rail_win())
@@ -600,7 +600,7 @@ describe("manicule rail expansion", function()
     local bufnr = vim.api.nvim_get_current_buf()
     local code_win = vim.api.nvim_get_current_win()
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "edit without closing",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -608,12 +608,12 @@ describe("manicule rail expansion", function()
     local rail_win = wait_for_rail()
     assert.is_truthy(rail_win)
 
-    -- Open the comment editor: focus moves into a manicule float. The
+    -- Open the comment editor: focus moves into a pjollrig float. The
     -- editor focus exception must leave the rail open with its card.
-    local records = require("manicule").list()
-    require("manicule").edit(records[1].id)
+    local records = require("pjollrig").list()
+    require("pjollrig").edit(records[1].id)
     assert.is_true(vim.wait(1000, function()
-      return require("manicule.ui.editor").is_active()
+      return require("pjollrig.ui.editor").is_active()
     end, 10))
 
     vim.wait(50, function()
@@ -622,18 +622,18 @@ describe("manicule rail expansion", function()
     assert.is_true(vim.api.nvim_win_is_valid(rail_win))
     assert.is_truthy(table.concat(rail_lines(rail_win), "\n"):find("edit without closing", 1, true))
 
-    require("manicule.ui.editor").close_active()
+    require("pjollrig.ui.editor").close_active()
     -- Wait for the editor's SCHEDULED close/focus-restore to finish (it
     -- returns focus to the code window), not just the is_active flip —
     -- otherwise the queued restore leaks into the next test.
     assert.is_true(vim.wait(1000, function()
-      return not require("manicule.ui.editor").is_active() and vim.api.nvim_get_current_win() == code_win
+      return not require("pjollrig.ui.editor").is_active() and vim.api.nvim_get_current_win() == code_win
     end, 10))
     assert.is_true(vim.api.nvim_win_is_valid(rail_win))
   end)
 end)
 
-describe("manicule rail review coexistence", function()
+describe("pjollrig rail review coexistence", function()
   before_each(function()
     ctx = H.setup({ ui = { eol_expand = "rail" } })
   end)
@@ -645,7 +645,7 @@ describe("manicule rail review coexistence", function()
     vim.fn.mkdir(vim.fn.fnamemodify(left, ":h"), "p")
     vim.fn.writefile({ "return 1 -- old", "-- filler", "return 9" }, left)
     vim.fn.writefile({ "return 1 -- new", "-- filler", "return 9" }, right)
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     assert.is_true(R.start({
       files = { { left = left, right = right, status = "M", path = "pair.lua" } },
       label = "rail",
@@ -667,7 +667,7 @@ describe("manicule rail review coexistence", function()
     vim.api.nvim_set_current_win(code_win)
     local bufnr = right_buf
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "rail in review",
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
     })
@@ -687,7 +687,7 @@ describe("manicule rail review coexistence", function()
     local diff_wins, panel_wins = 0, 0
     for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
       local buf = vim.api.nvim_win_get_buf(winid)
-      if vim.bo[buf].filetype == "manicule-panel" then
+      if vim.bo[buf].filetype == "pjollrig-panel" then
         panel_wins = panel_wins + 1
       elseif vim.wo[winid].diff then
         diff_wins = diff_wins + 1
@@ -701,7 +701,7 @@ describe("manicule rail review coexistence", function()
     -- its window and its state resets.
     R.stop()
     assert.is_true(vim.wait(1000, function()
-      return find_rail_win() == nil and not require("manicule.ui.rail").is_open()
+      return find_rail_win() == nil and not require("pjollrig.ui.rail").is_open()
     end, 10))
   end)
 end)
@@ -709,7 +709,7 @@ end)
 -- Regression pin: with ui.eol_expand = "float" (the shipped default) the eol
 -- expansion behaves exactly as before the rail existed — float popups on
 -- the cursor line, no rail window ever.
-describe("manicule eol float expansion regression", function()
+describe("pjollrig eol float expansion regression", function()
   before_each(function()
     setup_env({ ui = { eol_expand = "float" } })
   end)
@@ -722,10 +722,10 @@ describe("manicule eol float expansion regression", function()
   end
 
   it("keeps the float expansion byte-identical and never opens a rail", function()
-    assert.are.equal("float", require("manicule.config").get().ui.eol_expand)
+    assert.are.equal("float", require("pjollrig.config").get().ui.eol_expand)
     local bufnr = vim.api.nvim_get_current_buf()
     move_cursor(bufnr, 3)
-    require("manicule").add({
+    require("pjollrig").add({
       body = "expand me now",
       range = { start = { 1, 0 }, end_ = { 1, 0 } },
     })

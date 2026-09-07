@@ -6,7 +6,7 @@ end
 
 local function temp_dir(prefix)
   local parent = (vim.env.TMPDIR or "/tmp"):gsub("\\", "/"):gsub("/$", "")
-  local dir = ("%s/%s-%s"):format(parent, unique_name(prefix or "manicule"), tostring(vim.fn.getpid()))
+  local dir = ("%s/%s-%s"):format(parent, unique_name(prefix or "pjollrig"), tostring(vim.fn.getpid()))
   vim.fn.mkdir(dir, "p")
   return dir
 end
@@ -19,7 +19,7 @@ function H.project_dir(base, name)
 end
 
 function H.setup(opts)
-  local artifact_root = temp_dir("manicule-test")
+  local artifact_root = temp_dir("pjollrig-test")
   local ctx = {
     artifact_root = artifact_root,
     state = artifact_root .. "/state",
@@ -27,12 +27,12 @@ function H.setup(opts)
   }
   vim.fn.mkdir(ctx.state, "p")
 
-  require("manicule.store")._reset()
-  require("manicule.sinks")._reset()
+  require("pjollrig.store")._reset()
+  require("pjollrig.sinks")._reset()
   pcall(function()
-    require("manicule.ui.render")._reset()
+    require("pjollrig.ui.render")._reset()
   end)
-  vim.g.loaded_manicule = nil
+  vim.g.loaded_pjollrig = nil
 
   local base = {
     store = {
@@ -48,7 +48,7 @@ function H.setup(opts)
       socket = false,
     },
   }
-  require("manicule").setup(vim.tbl_deep_extend("force", base, opts or {}))
+  require("pjollrig").setup(vim.tbl_deep_extend("force", base, opts or {}))
   return ctx
 end
 
@@ -74,17 +74,17 @@ function H.teardown(ctx)
   pcall(vim.cmd, "silent! %bwipeout!")
   -- Free all quickfix lists so a spec that populates one (e.g. the
   -- "user's quickfix is untouched" coverage) can't leak it into a later
-  -- spec's "manicule never creates a qf list" assertion.
+  -- spec's "pjollrig never creates a qf list" assertion.
   pcall(vim.fn.setqflist, {}, "f")
   pcall(function()
-    require("manicule")._reset_sync_timer()
+    require("pjollrig")._reset_sync_timer()
   end)
-  require("manicule.store")._reset()
-  require("manicule.sinks")._reset()
+  require("pjollrig.store")._reset()
+  require("pjollrig.sinks")._reset()
   pcall(function()
-    require("manicule.ui.render")._reset()
+    require("pjollrig.ui.render")._reset()
   end)
-  vim.g.loaded_manicule = nil
+  vim.g.loaded_pjollrig = nil
   if ctx then
     H.rimraf(ctx.artifact_root)
   end
@@ -105,7 +105,7 @@ end
 
 function H.capture_events(patterns)
   local events = {}
-  local group = vim.api.nvim_create_augroup("manicule-test-events-" .. tostring(math.random(1000000)), { clear = true })
+  local group = vim.api.nvim_create_augroup("pjollrig-test-events-" .. tostring(math.random(1000000)), { clear = true })
   vim.api.nvim_create_autocmd("User", {
     group = group,
     pattern = patterns,
@@ -124,7 +124,7 @@ end
 function H.register_fake_sink(name, opts)
   opts = opts or {}
   local calls = {}
-  require("manicule").register_sink({
+  require("pjollrig").register_sink({
     name = name,
     label = opts.label,
     description = opts.description,
@@ -245,8 +245,8 @@ function H.git_repo(ctx, files)
     return result
   end
   git("init", "-q", "-b", "main")
-  git("config", "user.email", "manicule@test.local")
-  git("config", "user.name", "Manicule Test")
+  git("config", "user.email", "pjollrig@test.local")
+  git("config", "user.name", "Pjollrig Test")
   git("config", "commit.gpgsign", "false")
   -- No detached background jobs: they keep writing into .git while
   -- teardown deletes the tree, the source of intermittent E484 noise.

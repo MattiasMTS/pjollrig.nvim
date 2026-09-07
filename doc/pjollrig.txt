@@ -1,0 +1,286 @@
+*pjollrig.txt*          For Neovim >= 0.12.0         Last change: 2026 September 07
+
+==============================================================================
+Table of Contents                                 *pjollrig-table-of-contents*
+
+1. pjollrig.nvim                                      |pjollrig-pjollrig.nvim|
+  - Features                                 |pjollrig-pjollrig.nvim-features|
+  - Requirements                         |pjollrig-pjollrig.nvim-requirements|
+  - Install                                   |pjollrig-pjollrig.nvim-install|
+  - Usage                                       |pjollrig-pjollrig.nvim-usage|
+  - Quickfix                                 |pjollrig-pjollrig.nvim-quickfix|
+  - Configuration                       |pjollrig-pjollrig.nvim-configuration|
+  - Storage                                   |pjollrig-pjollrig.nvim-storage|
+  - Sinks                                       |pjollrig-pjollrig.nvim-sinks|
+  - Events                                     |pjollrig-pjollrig.nvim-events|
+  - Notes                                       |pjollrig-pjollrig.nvim-notes|
+
+==============================================================================
+1. pjollrig.nvim                                      *pjollrig-pjollrig.nvim*
+
+PJOLLRIG — roughly PYOLL-ri(g), with stress on the first syllable.
+Swedish: silly, chatty, or prone to idle chatter; a nod to northern Swedish
+"pjoller" (chatter and nonsense).
+
+Formerly manicule.nvim. Commands, Lua modules, Plug maps, highlights and User
+events now use pjollrig/Pjollrig. The comment store stays under
+stdpath("state")/manicule/ so existing comments remain available.
+
+Persistent review comments for Neovim.
+
+pjollrig.nvim lets you attach notes to lines or ranges in any buffer, keep them
+anchored with extmarks as text moves, review them in quickfix, and send them to
+a sink such as the clipboard or a running coding-agent surface.
+
+It is meant for local code review and follow-up work: leave comments while
+reading code, collect them across files, then resolve them or hand them off as
+a review batch.
+
+
+  Status: alpha.
+
+FEATURES                                     *pjollrig-pjollrig.nvim-features*
+
+- Anchored comments on normal files, unrooted files, scratch buffers,
+    terminals, and help buffers.
+- Floating popups on commented lines, with optional sticky display.
+- Quickfix list for scanning, jumping, editing, and deleting comments.
+- Project-scoped and session-scoped persistence.
+- Pluggable sinks for sending comments elsewhere.
+- Built-in clipboard sink and cmux integration.
+- Native `User` autocmd events for lifecycle hooks.
+
+See ARCHITECTURE.md <./ARCHITECTURE.md> for the deeper implementation notes and
+event payloads.
+
+
+REQUIREMENTS                             *pjollrig-pjollrig.nvim-requirements*
+
+Neovim >= 0.12.
+
+The default project store uses the local SQLite library through LuaJIT FFI.
+Most Neovim builds on macOS and Linux can load `libsqlite3` already; run
+`:checkhealth pjollrig` to confirm.
+
+Run `:checkhealth pjollrig` after setup to verify the store directory, SQLite
+support, Neovim API support, clipboard support, and registered sinks.
+
+
+INSTALL                                       *pjollrig-pjollrig.nvim-install*
+
+With lazy.nvim <https://github.com/folke/lazy.nvim>
+
+>lua
+    {
+      "MattiasMTS/pjollrig.nvim",
+      event = { "BufReadPost", "BufNewFile" },
+      cmd = { "PjollrigAdd", "PjollrigList", "PjollrigNext", "PjollrigPrev", "PjollrigSend" },
+      keys = {
+        { "<leader>ma", "<Plug>(pjollrig-add)", mode = { "n", "x" }, desc = "Pjollrig: add comment" },
+        { "<leader>ml", "<Plug>(pjollrig-list)", desc = "Pjollrig: list comments" },
+      },
+      opts = {},
+    }
+<
+
+Usean event trigger because setup registers the autocmds that attach existing
+records to loaded buffers.
+
+
+USAGE                                           *pjollrig-pjollrig.nvim-usage*
+
+>vim
+    :PjollrigAdd           " add a comment on the current line or visual range
+    :PjollrigList          " open project comments in quickfix
+    :PjollrigEdit          " pick a comment to edit, or pass a list position
+    :PjollrigDelete        " pick a comment to delete, or pass a list position
+    :PjollrigResolve       " pick a comment to mark resolved
+    :PjollrigToggle        " hide or restore all comment visuals
+    :PjollrigNext [count]  " jump to the next comment in the current buffer
+    :PjollrigPrev [count]  " jump to the previous comment in the current buffer
+    :PjollrigSend [sink]   " send comments to a sink
+<
+
+`:PjollrigAdd` opens a small markdown buffer in insert mode. Press `<CR>` to
+insert a newline, `<Esc>` then `<CR>` to submit, or `q` in normal mode to
+cancel. Moving focus out of the floating editor, including clicking back into
+the main buffer, also cancels and discards the draft.
+
+Default keymaps:
+
+- `gca` edits the comment at or covering the cursor.
+- `gcd` deletes the comment at or covering the cursor.
+- `]m` jumps to the next comment in the current buffer.
+- `[m` jumps to the previous comment in the current buffer.
+
+Set `vim.g.pjollrig_no_default_keymaps = 1` before loading the plugin to opt
+out. Core actions are exposed as `<Plug>` maps so you can choose your own
+leader bindings:
+
+>lua
+    vim.keymap.set({ "n", "x" }, "<leader>ca", "<Plug>(pjollrig-add)")
+    vim.keymap.set("n", "<leader>cl", "<Plug>(pjollrig-list)")
+    vim.keymap.set("n", "]c", "<Plug>(pjollrig-next)")
+    vim.keymap.set("n", "[c", "<Plug>(pjollrig-prev)")
+<
+
+
+QUICKFIX                                     *pjollrig-pjollrig.nvim-quickfix*
+
+`:PjollrigList` opens a quickfix list titled `pjollrig (...)`.
+
+- `<CR>` jumps to the anchored location.
+- `dd` deletes the comment under the cursor.
+- `ce` edits the comment under the cursor.
+- `u` undoes the last comment deletion (multi-level; repeat to undo more).
+- `<C-r>` redoes the last undone deletion (multi-level; a new deletion clears the redo branch).
+
+The list refreshes in place when comments are added, edited, deleted, restored,
+or resolved.
+
+
+CONFIGURATION                           *pjollrig-pjollrig.nvim-configuration*
+
+All keys are optional.
+
+>lua
+    require("pjollrig").setup({
+      store = {
+        dir = vim.fn.stdpath("state") .. "/manicule/",
+        format = "mpack", -- session store: "mpack" or "json"
+        branch = false,
+        persist_unrooted = true,
+        canonicalize_symlinks = true,
+        root_markers = { ".git", ".hg", "package.json" },
+        poll_interval_ms = 750,
+      },
+      sinks = {
+        clipboard = true,
+        cmux = {
+          enabled = true,
+          auto_submit = true, -- set false to paste and wait for manual Enter
+          submit_delay_ms = 120, -- delay before Enter, lets a large paste settle first
+          paste_chunk_bytes = 1024, -- max bytes per paste chunk (large reviews are split to avoid PTY truncation)
+          paste_chunk_delay_ms = 80, -- delay between paste chunks so the agent's terminal can drain
+          clear_on_success = false, -- keep comments until you verify and resolve them
+          pre_text = "Optional instructions inserted before the comments.",
+          post_text = "Optional follow-up instructions inserted after the comments.",
+        },
+      },
+      ui = {
+        width = 72,
+        height = 6,
+        editor_mode = "insert",
+        submit_keys = { "<CR>" },
+        cancel_keys = { "q" },
+        opacity = 0.0, -- float transparency: 0.0 opaque, 1.0 fully transparent
+        sticky = false,
+      },
+    })
+<
+
+`ui.opacity` is fractional float transparency: `0` is opaque, `0.5` is half
+transparent, `0.99` is 99% transparent, and `1` is fully transparent.
+
+
+STORAGE                                       *pjollrig-pjollrig.nvim-storage*
+
+Project comments are stored in one SQLite database per project root. The
+database uses WAL mode and keeps both a current `records` projection and an
+append-only `events` log, so separate Neovim sessions in the same project can
+observe each other’s changes without rewriting one whole store file.
+
+Session comments share a `session.<format>` file for unrooted or special
+buffers. Stores live under `store.dir`; by default that is:
+
+>vim
+    :echo stdpath("state") . "/manicule/"
+<
+
+The session file schema is:
+
+>lua
+    { version = 1, records = { ... } }
+<
+
+
+SINKS                                           *pjollrig-pjollrig.nvim-sinks*
+
+Sinks receive comment batches from `:PjollrigSend`.
+
+Built-ins:
+
+- `clipboard` copies formatted comments to the `+` register.
+- `cmux` sends a markdown review batch to a cmux coding-agent surface and keeps
+    comments in Pjollrig by default so you can verify fixes before resolving them.
+
+`cmux.enabled` is boolean. When enabled, the integration registers only when a
+cmux workspace and usable cmux executable are available. `cmux.auto_submit`
+controls whether Pjollrig presses Enter after pasting the review into the agent
+prompt. Set it to `false` if you want to inspect or edit the prompt manually
+before submission. `cmux.submit_delay_ms` adds a delay before that Enter key
+(default 120ms); values around 100-250ms can help large pasted prompts settle
+before submission. Large reviews are automatically split into chunks
+(`cmux.paste_chunk_bytes`, default 1024) with a short delay between them
+(`cmux.paste_chunk_delay_ms`, default 80ms) to avoid the receiving terminal
+dropping the middle of the payload. Set `cmux.clear_on_success = true` if you
+want a successful cmux handoff to delete the sent comments immediately. The
+bundled text sinks, currently `clipboard` and `cmux`, also accept `pre_text`
+and `post_text` strings. These are inserted before and after the formatted
+comments while Pjollrig still owns comment IDs and file/range formatting.
+
+Register a custom sink:
+
+>lua
+    require("pjollrig").register_sink({
+      name = "mytool",
+      label = "My Tool",
+      pre_text = "Optional text before formatted comments.",
+      post_text = "Optional text after formatted comments.",
+      clear_on_success = false,
+      validate = function(ctx)
+        if not ctx.token then
+          return false, "missing token"
+        end
+        return true
+      end,
+      send = function(comments, ctx, cb)
+        -- send comments somewhere
+        cb(true)
+      end,
+    })
+<
+
+Set `clear_on_success = true` only for sinks that consume the review, because
+successful dispatch deletes the sent comments.
+
+
+EVENTS                                         *pjollrig-pjollrig.nvim-events*
+
+pjollrig emits native `User` autocmds:
+
+>lua
+    vim.api.nvim_create_autocmd("User", {
+      pattern = "PjollrigAdded",
+      callback = function(ev)
+        vim.print(ev.data)
+      end,
+    })
+<
+
+Events: `PjollrigAdded`, `PjollrigEdited`, `PjollrigDeleted`,
+`PjollrigRestored`, `PjollrigResolved`, `PjollrigSent`, `PjollrigSynced`,
+`PjollrigOrphaned`, `PjollrigRenamed`, and `PjollrigVisibility`.
+
+
+NOTES                                           *pjollrig-pjollrig.nvim-notes*
+
+- Comments in git diff views are anchored to the working-tree side when the
+    reference buffer can be identified.
+- Quickfix, prompt, and command-line-window buffers reject new comments.
+- Detailed edge cases and data flow are documented in
+    ARCHITECTURE.md <./ARCHITECTURE.md>.
+
+Generated by panvimdoc <https://github.com/kdheepak/panvimdoc>
+
+vim:tw=78:ts=8:noet:ft=help:norl:

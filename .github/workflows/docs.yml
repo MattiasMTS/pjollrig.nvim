@@ -17,7 +17,7 @@ jobs:
       - name: panvimdoc
         uses: kdheepak/panvimdoc@v4.0.1
         with:
-          vimdoc: manicule
+          vimdoc: pjollrig
           version: "Neovim >= 0.12.0"
           demojify: true
           treesitter: true

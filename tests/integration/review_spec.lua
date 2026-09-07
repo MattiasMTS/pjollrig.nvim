@@ -2,11 +2,11 @@ local H = require("helpers")
 
 local ctx
 
----Block until an async `:ManiculeReview` attached its files (the
+---Block until an async `:PjollrigReview` attached its files (the
 ---command returns within a frame with a resolving shell; the pairs
 ---land from the resolver's callback).
 local function wait_attached()
-  local R = require("manicule.review")
+  local R = require("pjollrig.review")
   vim.wait(10000, function()
     local s = R.state()
     return s ~= nil and not s.resolving
@@ -20,7 +20,7 @@ end
 ---attach; the winbar breadcrumb and panel rows gain their counts on
 ---its one refresh).
 local function wait_diffstat()
-  local R = require("manicule.review")
+  local R = require("pjollrig.review")
   vim.wait(2000, function()
     return R.diffstat() ~= nil
   end, 5)
@@ -40,20 +40,20 @@ local function make_pairs(n)
   return files
 end
 
-describe("manicule review session", function()
+describe("pjollrig review session", function()
   before_each(function()
     ctx = H.setup()
   end)
   after_each(function()
     pcall(function()
-      require("manicule.review").stop()
+      require("pjollrig.review").stop()
     end)
     H.teardown(ctx)
     ctx = nil
   end)
 
   it("opens a diff pair with a protected left buffer", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     assert.is_true(R.start({ files = make_pairs(1), label = "test" }))
 
     local wins = vim.api.nvim_tabpage_list_wins(0)
@@ -64,7 +64,7 @@ describe("manicule review session", function()
       local buf = vim.api.nvim_win_get_buf(win)
       local name = vim.api.nvim_buf_get_name(buf)
       -- Skip the panel window
-      if vim.bo[buf].filetype ~= "manicule-panel" then
+      if vim.bo[buf].filetype ~= "pjollrig-panel" then
         assert.is_true(vim.wo[win].diff)
         if name:find("/left/", 1, true) then
           saw_left = true
@@ -80,7 +80,7 @@ describe("manicule review session", function()
   end)
 
   it("cycles pairs with next/prev and wraps", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     assert.is_true(R.start({ files = make_pairs(2), label = "test" }))
     assert.are.equal(1, R.state().index)
     R.next()
@@ -93,7 +93,7 @@ describe("manicule review session", function()
   end)
 
   it("maps <Tab>/<S-Tab> in review buffers and removes them on stop", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     assert.is_true(R.start({ files = make_pairs(2), label = "tabnav" }))
 
     local right_buf = vim.fn.bufnr(R.state().files[1].right)
@@ -124,7 +124,7 @@ describe("manicule review session", function()
   end)
 
   it("stop() clears state and closes the session tab", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local tabs_before = #vim.api.nvim_list_tabpages()
     assert.is_true(R.start({ files = make_pairs(1), label = "test" }))
     R.stop()
@@ -133,12 +133,12 @@ describe("manicule review session", function()
   end)
 
   it("start() caches the session's root and uris once", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = make_pairs(2)
     assert.is_true(R.start({ files = files, label = "cache" }))
 
     local state = R.state()
-    local uri_mod = require("manicule.uri")
+    local uri_mod = require("pjollrig.uri")
     local uri1 = uri_mod.for_path(files[1].right)
     local uri2 = uri_mod.for_path(files[2].right)
     -- Index-aligned array, membership set, and uri -> pair index map.
@@ -152,7 +152,7 @@ describe("manicule review session", function()
   end)
 
   it("diffstat() fills deferred once per session and caches on it", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = make_pairs(2)
     files[2].status = "D"
     assert.is_true(R.start({ files = files, label = "diffstat" }))
@@ -178,7 +178,7 @@ describe("manicule review session", function()
   end)
 
   it("diffstat(files) computes explicit pairs, bypassing the session cache", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = make_pairs(2)
     files[2].status = "D"
 
@@ -199,7 +199,7 @@ describe("manicule review session", function()
   end)
 
   it("stop() deletes owned stage dirs and wipes buffers pointing into them", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     -- Both sides staged, like a pr-head-not-checked-out session: the
     -- RIGHT buffer is a plain file buffer (no bufhidden=wipe), so stop()
     -- must wipe it before removing the files it points at.
@@ -222,7 +222,7 @@ describe("manicule review session", function()
   end)
 
   it("start_from_job leaves external stage dirs alone unless the job opts in", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = make_pairs(1)
     local dir = ctx.artifact_root .. "/driver-stage"
     vim.fn.mkdir(dir, "p")
@@ -234,7 +234,7 @@ describe("manicule review session", function()
     R.stop()
     assert.are.equal(1, vim.fn.isdirectory(dir), "stop() deleted a dir the session never owned")
 
-    -- Opt-in: the job lists the dirs manicule should delete on stop.
+    -- Opt-in: the job lists the dirs pjollrig should delete on stop.
     local job_b = ctx.artifact_root .. "/job-b.json"
     vim.fn.writefile({ vim.json.encode({ label = "ext", files = files, stage_dirs = { dir } }) }, job_b)
     assert.is_true(R.start_from_job(job_b))
@@ -242,17 +242,17 @@ describe("manicule review session", function()
     assert.are.equal(0, vim.fn.isdirectory(dir), "opted-in stage dir survived stop()")
   end)
 
-  it(":ManiculeReview HEAD owns its staged baseline dir and stop() removes it", function()
-    vim.cmd("runtime plugin/manicule.lua")
+  it(":PjollrigReview HEAD owns its staged baseline dir and stop() removes it", function()
+    vim.cmd("runtime plugin/pjollrig.lua")
     local root = H.git_repo(ctx, { ["own.lua"] = { "return 1" } })
     vim.fn.writefile({ "return 2" }, root .. "/own.lua")
     local saved = vim.uv.cwd()
     vim.cmd.cd(root)
-    vim.cmd("ManiculeReview HEAD")
+    vim.cmd("PjollrigReview HEAD")
     wait_attached()
     vim.cmd.cd(saved)
 
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local state = assert(R.state(), "session did not start")
     assert.are.equal("table", type(state.stage_dirs))
     local dir = state.stage_dirs[1]
@@ -264,21 +264,21 @@ describe("manicule review session", function()
   end)
 
   it("rejects an empty file list", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local ok, err = R.start({ files = {}, label = "test" })
     assert.is_false(ok)
     assert.is_truthy(err:find("no files", 1, true))
   end)
 
   it("finish() sends only the session's comments to the sink", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = make_pairs(2)
     -- A comment on a file OUTSIDE the review session must not be sent.
     local outside = ctx.root .. "/outside.lua"
     vim.fn.writefile({ "return 0" }, outside)
 
     local sent
-    require("manicule").register_sink({
+    require("pjollrig").register_sink({
       name = "capture",
       send = function(comments, _, cb)
         sent = comments
@@ -299,12 +299,12 @@ describe("manicule review session", function()
 
     -- Comment on pair 1's worktree file (the current buffer after start).
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
-    local ui = require("manicule.ui")
+    local ui = require("pjollrig.ui")
     local original_prompt = ui.prompt
     ui.prompt = function(_opts, cb)
       cb("session comment")
     end
-    require("manicule").add()
+    require("pjollrig").add()
     ui.prompt = original_prompt
 
     -- Comment on the outside file.
@@ -312,7 +312,7 @@ describe("manicule review session", function()
     ui.prompt = function(_opts, cb)
       cb("outside comment")
     end
-    require("manicule").add()
+    require("pjollrig").add()
     ui.prompt = original_prompt
 
     assert.is_true(R.finish())
@@ -325,9 +325,9 @@ describe("manicule review session", function()
   end)
 
   it("finish() with no comments returns false and does not dispatch", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local called = false
-    require("manicule").register_sink({
+    require("pjollrig").register_sink({
       name = "capture",
       send = function(_, _, cb)
         called = true
@@ -342,7 +342,7 @@ describe("manicule review session", function()
   end)
 
   it("finish() and stop() are pure: ok,err returns, notifications live in the command layer", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local notified = {}
     local original_notify = vim.notify
     vim.notify = function(msg, level)
@@ -369,7 +369,7 @@ describe("manicule review session", function()
   end)
 
   it("start_from_job wires files, label, and the socket sink", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = make_pairs(1)
     local job_path = ctx.artifact_root .. "/job.json"
     vim.fn.writefile({
@@ -390,7 +390,7 @@ describe("manicule review session", function()
   end)
 
   it("start_from_job rejects unreadable or invalid job files", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local ok, err = R.start_from_job(ctx.artifact_root .. "/absent.json")
     assert.is_false(ok)
     assert.is_truthy(err)
@@ -402,16 +402,16 @@ describe("manicule review session", function()
     assert.is_truthy(err2)
   end)
 
-  it(":ManiculeReview <ref> starts a session via the git resolver", function()
-    vim.cmd("runtime plugin/manicule.lua")
+  it(":PjollrigReview <ref> starts a session via the git resolver", function()
+    vim.cmd("runtime plugin/pjollrig.lua")
     local root = H.git_repo(ctx, { ["cmd.lua"] = { "return 1" } })
     vim.fn.writefile({ "return 2" }, root .. "/cmd.lua")
     local saved = vim.uv.cwd()
     vim.cmd.cd(root)
 
-    vim.cmd("ManiculeReview HEAD")
+    vim.cmd("PjollrigReview HEAD")
     wait_attached()
-    local state = require("manicule.review").state()
+    local state = require("pjollrig.review").state()
     vim.cmd.cd(saved)
 
     assert.is_truthy(state)
@@ -420,8 +420,8 @@ describe("manicule review session", function()
     assert.are.equal("cmd.lua", state.files[1].path)
   end)
 
-  it(":ManiculeReview pr (bare) picks an open PR and labels with its title", function()
-    vim.cmd("runtime plugin/manicule.lua")
+  it(":PjollrigReview pr (bare) picks an open PR and labels with its title", function()
+    vim.cmd("runtime plugin/pjollrig.lua")
     local root, git = H.git_repo(ctx, { ["a.lua"] = { "return 1" } })
     local base_oid = vim.trim(git("rev-parse", "HEAD").stdout)
     git("checkout", "-q", "-b", "pr-branch")
@@ -458,7 +458,7 @@ describe("manicule review session", function()
       seen_item = select_opts.format_item(items[1])
       on_choice(items[1])
     end
-    local ok, err = pcall(vim.cmd, "ManiculeReview pr")
+    local ok, err = pcall(vim.cmd, "PjollrigReview pr")
     -- The PR list fetch is async too now: the picker fires only when the
     -- fake gh answers, so the stub must stay installed until then.
     vim.wait(2000, function()
@@ -475,22 +475,22 @@ describe("manicule review session", function()
     assert.is_true(ok, err)
 
     assert.are.equal("#42 Add widgets \u{2014} octocat", seen_item)
-    local state = require("manicule.review").state()
+    local state = require("pjollrig.review").state()
     assert.is_truthy(state, "picker did not start a session")
     assert.are.equal("pr 42: Add widgets", state.label)
   end)
 
   it("deleted-file (D) pairs accept comments on the left buffer", function()
-    vim.cmd("runtime plugin/manicule.lua")
+    vim.cmd("runtime plugin/pjollrig.lua")
     local root = H.git_repo(ctx, { ["gone.lua"] = { "return 1" } })
     -- Delete the file from worktree so git resolver stages status=D.
     vim.fn.delete(root .. "/gone.lua")
     local saved = vim.uv.cwd()
     vim.cmd.cd(root)
 
-    vim.cmd("ManiculeReview HEAD")
+    vim.cmd("PjollrigReview HEAD")
     wait_attached()
-    local state = require("manicule.review").state()
+    local state = require("pjollrig.review").state()
     assert.is_truthy(state)
     assert.are.equal(1, #state.files)
     assert.are.equal("D", state.files[1].status)
@@ -498,15 +498,15 @@ describe("manicule review session", function()
     -- Current buffer is the left (staged baseline) for the D pair.
     -- Fake prompt and add a comment.
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
-    local ui = require("manicule.ui")
+    local ui = require("pjollrig.ui")
     local original_prompt = ui.prompt
     ui.prompt = function(_opts, cb)
       cb("deleted file note")
     end
-    require("manicule").add()
+    require("pjollrig").add()
     ui.prompt = original_prompt
 
-    local records = require("manicule").list()
+    local records = require("pjollrig").list()
     assert.are.equal(1, #records)
     assert.are.equal("deleted file note", records[1].body)
     -- Scope is session because the staged left file path no longer
@@ -517,15 +517,15 @@ describe("manicule review session", function()
   end)
 
   it("panel opens on start with file rows and focus stays in the diff", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local qf_size_before = #vim.fn.getqflist()
     assert.is_true(R.start({ files = make_pairs(2), label = "panel-test" }))
 
-    -- Panel should be open: an owned manicule-panel buffer, no quickfix.
+    -- Panel should be open: an owned pjollrig-panel buffer, no quickfix.
     local panel_winid
     for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
       local bufnr = vim.api.nvim_win_get_buf(winid)
-      if vim.bo[bufnr].filetype == "manicule-panel" then
+      if vim.bo[bufnr].filetype == "pjollrig-panel" then
         panel_winid = winid
         break
       end
@@ -546,16 +546,16 @@ describe("manicule review session", function()
   end)
 
   it("panel queries comments once when building file rows", function()
-    local R = require("manicule.review")
-    local manicule = require("manicule")
-    local original_list = manicule.list
+    local R = require("pjollrig.review")
+    local pjollrig = require("pjollrig")
+    local original_list = pjollrig.list
     local list_calls = 0
-    manicule.list = function(opts)
+    pjollrig.list = function(opts)
       list_calls = list_calls + 1
       return original_list(opts)
     end
     local ok, start_ok, start_err = pcall(R.start, { files = make_pairs(3), label = "panel-test" })
-    manicule.list = original_list
+    pjollrig.list = original_list
 
     assert.is_true(ok)
     assert.is_true(start_ok, start_err)
@@ -563,9 +563,9 @@ describe("manicule review session", function()
   end)
 
   it("panel comment count updates when a comment is added", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     assert.is_true(R.start({ files = make_pairs(1), label = "panel-test" }))
-    local panel = require("manicule.review.panel")
+    local panel = require("pjollrig.review.panel")
 
     -- Initial count should be 0
     local lines = vim.api.nvim_buf_get_lines(panel.bufnr(), 0, -1, false)
@@ -574,7 +574,7 @@ describe("manicule review session", function()
     -- Find the right (modifiable) window and focus it
     for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
       local bufnr = vim.api.nvim_win_get_buf(winid)
-      if vim.bo[bufnr].filetype ~= "manicule-panel" and vim.bo[bufnr].modifiable then
+      if vim.bo[bufnr].filetype ~= "pjollrig-panel" and vim.bo[bufnr].modifiable then
         vim.api.nvim_set_current_win(winid)
         break
       end
@@ -582,12 +582,12 @@ describe("manicule review session", function()
 
     -- Add a comment
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
-    local ui = require("manicule.ui")
+    local ui = require("pjollrig.ui")
     local original_prompt = ui.prompt
     ui.prompt = function(_opts, cb)
       cb("test comment")
     end
-    require("manicule").add()
+    require("pjollrig").add()
     ui.prompt = original_prompt
 
     -- Wait for refresh
@@ -599,10 +599,10 @@ describe("manicule review session", function()
   end)
 
   it("<CR> in panel files view switches to that pair and keeps panel open", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     assert.is_true(R.start({ files = make_pairs(3), label = "panel-test" }))
 
-    local panel_winid = require("manicule.review.panel").winid()
+    local panel_winid = require("pjollrig.review.panel").winid()
     assert.is_truthy(panel_winid)
 
     -- Switch to panel and press <CR> on row 2 THROUGH buffer-local
@@ -620,14 +620,14 @@ describe("manicule review session", function()
   end)
 
   it("panel shows files view with comment counts", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = make_pairs(2)
     assert.is_true(R.start({ files = files, label = "panel-test" }))
 
     -- Find the right (modifiable) window and focus it
     for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
       local bufnr = vim.api.nvim_win_get_buf(winid)
-      if vim.bo[bufnr].filetype ~= "manicule-panel" and vim.bo[bufnr].modifiable then
+      if vim.bo[bufnr].filetype ~= "pjollrig-panel" and vim.bo[bufnr].modifiable then
         vim.api.nvim_set_current_win(winid)
         break
       end
@@ -635,17 +635,17 @@ describe("manicule review session", function()
 
     -- Add a comment so we have something in comments view
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
-    local ui = require("manicule.ui")
+    local ui = require("pjollrig.ui")
     local original_prompt = ui.prompt
     ui.prompt = function(_opts, cb)
       cb("test comment")
     end
-    require("manicule").add()
+    require("pjollrig").add()
     ui.prompt = original_prompt
     vim.wait(200)
 
     -- Files view should show both files with comment counts
-    local lines = vim.api.nvim_buf_get_lines(require("manicule.review.panel").bufnr(), 0, -1, false)
+    local lines = vim.api.nvim_buf_get_lines(require("pjollrig.review.panel").bufnr(), 0, -1, false)
     assert.is_true(#lines >= 1, "Expected at least 1 row, got " .. #lines)
     assert.is_truthy(lines[1]:find("comments"))
   end)
@@ -653,19 +653,19 @@ describe("manicule review session", function()
   local function add_comment(path, body)
     vim.cmd.edit(vim.fn.fnameescape(path))
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
-    local ui = require("manicule.ui")
+    local ui = require("pjollrig.ui")
     local original_prompt = ui.prompt
     ui.prompt = function(_opts, cb)
       cb(body)
     end
-    require("manicule").add()
+    require("pjollrig").add()
     ui.prompt = original_prompt
   end
 
   local function panel_win()
     for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
       local bufnr = vim.api.nvim_win_get_buf(winid)
-      if vim.bo[bufnr].filetype == "manicule-panel" then
+      if vim.bo[bufnr].filetype == "pjollrig-panel" then
         return winid
       end
     end
@@ -682,10 +682,10 @@ describe("manicule review session", function()
   local function panel_current_row()
     local winid = panel_win()
     assert.is_truthy(winid, "panel window not found")
-    local ns_current = vim.api.nvim_create_namespace("manicule.review.panel.current")
+    local ns_current = vim.api.nvim_create_namespace("pjollrig.review.panel.current")
     local bufnr = vim.api.nvim_win_get_buf(winid)
     for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(bufnr, ns_current, 0, -1, { details = true })) do
-      if mark[4].line_hl_group == "ManiculePanelCurrent" then
+      if mark[4].line_hl_group == "PjollrigPanelCurrent" then
         return mark[2] + 1
       end
     end
@@ -709,7 +709,7 @@ describe("manicule review session", function()
   end
 
   it("<CR> on a commented file scopes the comments view to that file", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = make_pairs(2)
     assert.is_true(R.start({ files = files, label = "drill" }))
     add_comment(files[1].right, "first file comment")
@@ -723,7 +723,7 @@ describe("manicule review session", function()
   end)
 
   it("<Esc> in scoped comments view returns to files view", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = make_pairs(2)
     assert.is_true(R.start({ files = files, label = "drill" }))
     add_comment(files[1].right, "first file comment")
@@ -739,7 +739,7 @@ describe("manicule review session", function()
   end)
 
   it("<CR> on a file without comments opens the pair", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = make_pairs(2)
     assert.is_true(R.start({ files = files, label = "drill" }))
     add_comment(files[1].right, "first file comment")
@@ -757,7 +757,7 @@ describe("manicule review session", function()
   end)
 
   it("o on a commented file opens the pair anyway", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = make_pairs(2)
     assert.is_true(R.start({ files = files, label = "drill" }))
     add_comment(files[2].right, "second file comment")
@@ -770,7 +770,7 @@ describe("manicule review session", function()
   end)
 
   it("tab switching clears a scoped comments view's file filter", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = make_pairs(2)
     assert.is_true(R.start({ files = files, label = "drill" }))
     add_comment(files[1].right, "first file comment")
@@ -805,7 +805,7 @@ describe("manicule review session", function()
   end
 
   it("L cycles files → comments → files; t keeps its tree layout across the cycle", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = make_nested_pair_set()
     assert.is_true(R.start({ files = files, label = "cycle" }))
     add_comment(files[1].right, "cycle comment")
@@ -823,7 +823,7 @@ describe("manicule review session", function()
   end)
 
   it("tree layout <CR> on a file row rebuilds that pair's diff", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = make_nested_pair_set()
     assert.is_true(R.start({ files = files, label = "tree-open" }))
 
@@ -845,17 +845,17 @@ describe("manicule review session", function()
   local function add_comment_at(path, line, body)
     vim.cmd.edit(vim.fn.fnameescape(path))
     vim.api.nvim_win_set_cursor(0, { line, 0 })
-    local ui = require("manicule.ui")
+    local ui = require("pjollrig.ui")
     local original_prompt = ui.prompt
     ui.prompt = function(_opts, cb)
       cb(body)
     end
-    require("manicule").add()
+    require("pjollrig").add()
     ui.prompt = original_prompt
   end
 
   it("<CR> in comments view rebuilds the pair's diff and jumps to the comment", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = make_pairs(2)
     vim.fn.writefile({ "return 2 -- new", "-- pad", "-- target", "-- pad" }, files[2].right)
     assert.is_true(R.start({ files = files, label = "jump" }))
@@ -896,7 +896,7 @@ describe("manicule review session", function()
   end)
 
   it("<CR> in comments view on a deleted-pair comment lands in the left buffer", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = make_pairs(1)
     -- Realpath the staged dir: records store canonical uris, and the
     -- macOS TMPDIR symlink (/var -> /private/var) would otherwise make
@@ -921,7 +921,7 @@ describe("manicule review session", function()
   end)
 
   it("<CR> in comments view on an unmatched comment warns and keeps the layout", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = make_pairs(2)
     assert.is_true(R.start({ files = files, label = "jump-warn" }))
     add_comment_at(files[1].right, 1, "orphan-to-be")
@@ -966,11 +966,11 @@ describe("manicule review session", function()
   ---Persist an imported-from-GitHub record on `path` (project scope,
   ---line 1) with the given `meta.github` table.
   local function put_imported(path, gh_meta, body)
-    local store = require("manicule.store")
+    local store = require("pjollrig.store")
     local now = os.time()
     local record = {
-      id = require("manicule.id").new(),
-      uri = require("manicule.uri").for_path(path),
+      id = require("pjollrig.id").new(),
+      uri = require("pjollrig.uri").for_path(path),
       scope = "project",
       project_root = ctx.root,
       range = { start = { 0, 0 }, end_ = { 0, 0 } },
@@ -987,12 +987,12 @@ describe("manicule review session", function()
   end
 
   it("r in comments view replies to an imported comment", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = make_pairs(1)
     put_imported(files[1].right, { id = 9001, imported = true, thread_id = 9001, pr = 42 })
     assert.is_true(R.start({ files = files, label = "reply" }))
 
-    local ui = require("manicule.ui")
+    local ui = require("pjollrig.ui")
     local original_prompt = ui.prompt
     ui.prompt = function(_opts, cb)
       cb("sounds good")
@@ -1002,20 +1002,20 @@ describe("manicule review session", function()
     ui.prompt = original_prompt
 
     local reply
-    for _, r in ipairs(require("manicule.store").all(ctx.root)) do
+    for _, r in ipairs(require("pjollrig.store").all(ctx.root)) do
       if r.body == "sounds good" then
         reply = r
       end
     end
     assert.is_truthy(reply, "reply record not created")
-    assert.are.equal(require("manicule.uri").for_path(files[1].right), reply.uri)
+    assert.are.equal(require("pjollrig.uri").for_path(files[1].right), reply.uri)
     assert.are.same({ start = { 0, 0 }, end_ = { 0, 0 } }, reply.range)
     assert.are.same({ to = 9001, pr = 42 }, reply.meta.github_reply)
     assert.is_nil(reply.meta.github)
   end)
 
   it("r on a non-imported comment warns and creates nothing", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = make_pairs(1)
     assert.is_true(R.start({ files = files, label = "reply-warn" }))
     add_comment(files[1].right, "local note")
@@ -1032,7 +1032,7 @@ describe("manicule review session", function()
     vim.notify = original_notify
 
     assert.is_truthy(warned, "expected a WARN")
-    assert.are.equal(1, #require("manicule").list(nil, { root = ctx.root }))
+    assert.are.equal(1, #require("pjollrig").list(nil, { root = ctx.root }))
   end)
 
   ---Fake gh on PATH that logs every argv line and answers any call
@@ -1061,7 +1061,7 @@ describe("manicule review session", function()
     local gh = fake_gh_resolve(ctx.artifact_root)
     local saved_path = vim.env.PATH
     vim.env.PATH = gh.bin .. ":" .. saved_path
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = make_pairs(1)
     local record = put_imported(
       files[1].right,
@@ -1076,7 +1076,7 @@ describe("manicule review session", function()
 
     -- The mutation runs through an async vim.system: the argv log, the
     -- flag flip, and the panel refresh all land in the callback.
-    local store = require("manicule.store")
+    local store = require("pjollrig.store")
     vim.wait(2000, function()
       return store.get(ctx.root, record.id).meta.github.resolved == true
     end)
@@ -1102,7 +1102,7 @@ describe("manicule review session", function()
   end)
 
   it("gr on a non-imported comment warns", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = make_pairs(1)
     assert.is_true(R.start({ files = files, label = "resolve-warn" }))
     add_comment(files[1].right, "local note")
@@ -1122,7 +1122,7 @@ describe("manicule review session", function()
   end)
 
   it("gr on an imported comment without a thread id warns", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = make_pairs(1)
     put_imported(files[1].right, { id = 9002, imported = true, thread_id = 9002, pr = 42 })
     assert.is_true(R.start({ files = files, label = "resolve-no-node" }))
@@ -1140,13 +1140,13 @@ describe("manicule review session", function()
 
     assert.is_truthy(warned, "expected a WARN")
     assert.is_truthy(
-      warned:find(":ManiculeReview pr", 1, true),
-      "WARN must point at re-running :ManiculeReview pr <n>, got: " .. tostring(warned)
+      warned:find(":PjollrigReview pr", 1, true),
+      "WARN must point at re-running :PjollrigReview pr <n>, got: " .. tostring(warned)
     )
   end)
 
   it("next/prev sync the panel's current-line highlight to the open pair", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     assert.is_true(R.start({ files = make_pairs(3), label = "sync" }))
     local pwin = panel_win()
     assert.is_truthy(pwin, "panel window not found")
@@ -1164,12 +1164,12 @@ describe("manicule review session", function()
   end)
 
   it("comment-add refresh keeps the panel index on the open pair", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = make_pairs(3)
     assert.is_true(R.start({ files = files, label = "sync-refresh" }))
     R.next() -- pair 2 open
 
-    -- Adding a comment fires User ManiculeAdded, which rebuilds the
+    -- Adding a comment fires User PjollrigAdded, which rebuilds the
     -- panel rows; the rebuild must keep the current-line highlight on
     -- the open pair.
     add_comment(files[2].right, "note on pair 2")
@@ -1180,7 +1180,7 @@ describe("manicule review session", function()
   end)
 
   it("next() in drill-down comments view leaves the comments list alone", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = make_pairs(2)
     assert.is_true(R.start({ files = files, label = "sync-drill" }))
     add_comment(files[1].right, "drill comment")
@@ -1198,21 +1198,21 @@ describe("manicule review session", function()
     assert.is_truthy(lines[1]:find("drill comment", 1, true))
   end)
 
-  it(":ManiculeToggle hides the panel during a session and keeps it running", function()
-    vim.cmd("runtime plugin/manicule.lua")
-    local R = require("manicule.review")
+  it(":PjollrigToggle hides the panel during a session and keeps it running", function()
+    vim.cmd("runtime plugin/pjollrig.lua")
+    local R = require("pjollrig.review")
     assert.is_true(R.start({ files = make_pairs(1), label = "toggle" }))
     assert.is_truthy(panel_win(), "panel window not found")
 
-    vim.cmd("ManiculeToggle")
+    vim.cmd("PjollrigToggle")
 
     assert.is_nil(panel_win(), "panel window still open after toggle")
     assert.is_truthy(R.state(), "toggle killed the session")
   end)
 
-  it(":ManiculeToggle twice restores the panel in the same view", function()
-    vim.cmd("runtime plugin/manicule.lua")
-    local R = require("manicule.review")
+  it(":PjollrigToggle twice restores the panel in the same view", function()
+    vim.cmd("runtime plugin/pjollrig.lua")
+    local R = require("pjollrig.review")
     local files = make_pairs(2)
     assert.is_true(R.start({ files = files, label = "toggle" }))
     add_comment(files[1].right, "first file comment")
@@ -1222,9 +1222,9 @@ describe("manicule review session", function()
     press_in_panel(1, "<CR>")
     assert.are.equal(1, #panel_lines())
 
-    vim.cmd("ManiculeToggle")
+    vim.cmd("PjollrigToggle")
     assert.is_nil(panel_win())
-    vim.cmd("ManiculeToggle")
+    vim.cmd("PjollrigToggle")
 
     local winid = panel_win()
     assert.is_truthy(winid, "panel window not reopened")
@@ -1234,28 +1234,28 @@ describe("manicule review session", function()
     assert.is_truthy(lines[1]:find("first file comment", 1, true))
   end)
 
-  it(":ManiculeToggle without a session still toggles comment visuals", function()
-    vim.cmd("runtime plugin/manicule.lua")
-    local render = require("manicule.ui.render")
+  it(":PjollrigToggle without a session still toggles comment visuals", function()
+    vim.cmd("runtime plugin/pjollrig.lua")
+    local render = require("pjollrig.ui.render")
     assert.is_true(render.is_visible())
 
-    vim.cmd("ManiculeToggle")
+    vim.cmd("PjollrigToggle")
     assert.is_false(render.is_visible())
 
-    vim.cmd("ManiculeToggle")
+    vim.cmd("PjollrigToggle")
     assert.is_true(render.is_visible())
   end)
 
   it("panel.toggle() without a session is a no-op returning false", function()
-    assert.is_false(require("manicule.review.panel").toggle())
+    assert.is_false(require("pjollrig.review.panel").toggle())
   end)
 
   it("finish() from a foreign cwd/unnamed buffer still sends session comments", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = make_pairs(1)
 
     local sent
-    require("manicule").register_sink({
+    require("pjollrig").register_sink({
       name = "capture",
       send = function(comments, _, cb)
         sent = comments
@@ -1288,7 +1288,7 @@ describe("manicule review session", function()
   end)
 
   it("VimLeavePre autoflush wait tracks the socket sink's ack timeout", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     -- Default socket ack_timeout_ms is 2000; the historical 2500 floor holds.
     assert.are.equal(2500, R._autoflush_wait_ms())
 
@@ -1296,12 +1296,12 @@ describe("manicule review session", function()
     -- must extend the wait past the sink's ack timer, or nvim exits before
     -- the never-lose-comments submit.json fallback fires. No restore
     -- needed: before_each's setup() rebuilds the config from defaults.
-    require("manicule.config").get().sinks.socket = { ack_timeout_ms = 5000 }
+    require("pjollrig.config").get().sinks.socket = { ack_timeout_ms = 5000 }
     assert.is_true(R._autoflush_wait_ms() > 5000, "wait must outlive the ack timer")
   end)
 
   it("recreates the session tab after :tabclose so next() does not error", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     assert.is_true(R.start({ files = make_pairs(2), label = "tabclose" }))
     local dead_tab = R.state().tab
 
@@ -1323,7 +1323,7 @@ describe("manicule review session", function()
   end)
 
   it("stop() closes the panel and clears autocmds", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     assert.is_true(R.start({ files = make_pairs(1), label = "panel-test" }))
 
     -- Panel should be open
@@ -1334,24 +1334,24 @@ describe("manicule review session", function()
 
     -- Panel should be closed, with its augroup gone
     assert.is_false(vim.api.nvim_win_is_valid(panel_winid))
-    assert.is_false(pcall(vim.api.nvim_get_autocmds, { group = "ManiculeReviewPanel" }))
+    assert.is_false(pcall(vim.api.nvim_get_autocmds, { group = "PjollrigReviewPanel" }))
   end)
 end)
 
-describe("manicule review viewed tracking", function()
+describe("pjollrig review viewed tracking", function()
   before_each(function()
     ctx = H.setup()
   end)
   after_each(function()
     pcall(function()
-      require("manicule.review").stop()
+      require("pjollrig.review").stop()
     end)
     H.teardown(ctx)
     ctx = nil
   end)
 
   it("next() marks the pair it leaves as viewed and skips viewed pairs", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     assert.is_true(R.start({ files = make_pairs(3), label = "viewed-skip" }))
     R.set_viewed(2, true)
 
@@ -1363,7 +1363,7 @@ describe("manicule review viewed tracking", function()
   end)
 
   it("prev() steps back literally: no viewed-marking, no skipping", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     assert.is_true(R.start({ files = make_pairs(3), label = "viewed-prev" }))
 
     -- <Tab> then <S-Tab> must return to the file just left, even though
@@ -1383,7 +1383,7 @@ describe("manicule review viewed tracking", function()
   end)
 
   it("falls back to plain cycling when every pair is viewed", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     assert.is_true(R.start({ files = make_pairs(2), label = "viewed-all" }))
     R.set_viewed(1, true)
     R.set_viewed(2, true)
@@ -1397,7 +1397,7 @@ describe("manicule review viewed tracking", function()
   end)
 
   it("set_viewed(index, false) un-marks so navigation stops skipping", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     assert.is_true(R.start({ files = make_pairs(3), label = "viewed-unmark" }))
     R.set_viewed(2, true)
     R.set_viewed(2, false)
@@ -1408,7 +1408,7 @@ describe("manicule review viewed tracking", function()
   end)
 
   it("set_viewed ignores out-of-range indexes and missing sessions", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     R.set_viewed(1, true) -- no session: no error
     assert.is_true(R.start({ files = make_pairs(1), label = "viewed-range" }))
     R.set_viewed(99, true)
@@ -1416,7 +1416,7 @@ describe("manicule review viewed tracking", function()
   end)
 
   it("viewed state is cleared per session", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     assert.is_true(R.start({ files = make_pairs(2), label = "viewed-fresh" }))
     R.set_viewed(1, true)
     R.stop()
@@ -1426,13 +1426,13 @@ describe("manicule review viewed tracking", function()
   end)
 end)
 
-describe("manicule review winbar breadcrumb", function()
+describe("pjollrig review winbar breadcrumb", function()
   before_each(function()
     ctx = H.setup()
   end)
   after_each(function()
     pcall(function()
-      require("manicule.review").stop()
+      require("pjollrig.review").stop()
     end)
     H.teardown(ctx)
     ctx = nil
@@ -1444,7 +1444,7 @@ describe("manicule review winbar breadcrumb", function()
     local wins = {}
     for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
       local bufnr = vim.api.nvim_win_get_buf(winid)
-      if vim.bo[bufnr].filetype ~= "manicule-panel" then
+      if vim.bo[bufnr].filetype ~= "pjollrig-panel" then
         local name = vim.api.nvim_buf_get_name(bufnr)
         if name:find("/left/", 1, true) then
           wins.left = winid
@@ -1457,7 +1457,7 @@ describe("manicule review winbar breadcrumb", function()
   end
 
   it("split mode: breadcrumb on the right window, baseline tag on the left", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     assert.is_true(R.start({ files = make_pairs(2), label = "winbar-split" }))
     -- The counts land with the deferred diffstat fill, which repaints
     -- the OPEN pair's breadcrumb (pair switches recompute their own).
@@ -1475,15 +1475,15 @@ describe("manicule review winbar breadcrumb", function()
   end)
 
   it("unified mode: breadcrumb on the single window", function()
-    require("manicule.config").get().review.diff_mode = "unified"
-    local R = require("manicule.review")
+    require("pjollrig.config").get().review.diff_mode = "unified"
+    local R = require("pjollrig.review")
     assert.is_true(R.start({ files = make_pairs(1), label = "winbar-unified" }))
     wait_diffstat()
     assert.are.equal("f1.lua \u{00B7} M \u{00B7} +1 \u{2212}1", vim.wo[vim.api.nvim_get_current_win()].winbar)
   end)
 
   it("omits zero diffstat components and handles D pairs", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local left = ctx.artifact_root .. "/left/gone.lua"
     vim.fn.mkdir(vim.fn.fnamemodify(left, ":h"), "p")
     vim.fn.writefile({ "one", "two" }, left)
@@ -1495,7 +1495,7 @@ describe("manicule review winbar breadcrumb", function()
   end)
 
   it("escapes % in the path for the statusline engine", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local left = ctx.artifact_root .. "/left/we%rd.lua"
     local right = ctx.root .. "/we%rd.lua"
     vim.fn.mkdir(vim.fn.fnamemodify(left, ":h"), "p")
@@ -1511,7 +1511,7 @@ describe("manicule review winbar breadcrumb", function()
   end)
 
   it("stop() clears the winbar from surviving windows", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     assert.is_true(R.start({ files = make_pairs(1), label = "winbar-clear" }))
     -- Reduce to the single-tab, worktree-window-only shape: stop()'s
     -- single-tab branch reuses this window instead of closing it.
@@ -1528,13 +1528,13 @@ describe("manicule review winbar breadcrumb", function()
   end)
 end)
 
-describe("manicule review document pairs", function()
+describe("pjollrig review document pairs", function()
   before_each(function()
     ctx = H.setup()
   end)
   after_each(function()
     pcall(function()
-      require("manicule.review").stop()
+      require("pjollrig.review").stop()
     end)
     H.teardown(ctx)
     ctx = nil
@@ -1551,7 +1551,7 @@ describe("manicule review document pairs", function()
   local function file_wins()
     local wins = {}
     for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-      if vim.bo[vim.api.nvim_win_get_buf(winid)].filetype ~= "manicule-panel" then
+      if vim.bo[vim.api.nvim_win_get_buf(winid)].filetype ~= "pjollrig-panel" then
         wins[#wins + 1] = winid
       end
     end
@@ -1568,7 +1568,7 @@ describe("manicule review document pairs", function()
   end
 
   it("opens plain: one window, no diff, prose wrapping, `path · doc` breadcrumb", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local pair = make_doc_pair("plan.md")
     assert.is_true(R.start({ files = { pair }, label = "doc" }))
 
@@ -1593,7 +1593,7 @@ describe("manicule review document pairs", function()
   end)
 
   it("keeps <Tab>/<S-Tab> mapped in the doc buffer; stop() removes them and the session", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = { make_doc_pair("plan.md"), make_pairs(1)[1] }
     assert.is_true(R.start({ files = files, label = "doc-nav" }))
     local doc_buf = vim.api.nvim_get_current_buf()
@@ -1614,7 +1614,7 @@ describe("manicule review document pairs", function()
   end)
 
   it("diff-mode toggle on a doc pair re-opens it plain without error", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local pair = make_doc_pair("plan.md")
     assert.is_true(R.start({ files = { pair }, label = "doc-mode" }))
     for _, mode in ipairs({ "unified", "split" }) do
@@ -1629,7 +1629,7 @@ describe("manicule review document pairs", function()
   end)
 
   it("prose options stay with the doc buffer: the next pair's diff windows are unaffected", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = { make_doc_pair("plan.md"), make_pairs(1)[1] }
     assert.is_true(R.start({ files = files, label = "doc-leak" }))
     assert.is_true(vim.wo[vim.api.nvim_get_current_win()].linebreak)
@@ -1656,7 +1656,7 @@ describe("manicule review document pairs", function()
   end)
 
   it("pair_path, the session uris, and diffstat see the right side and no counts", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local doc = make_doc_pair("plan.md")
     local files = { doc, make_pairs(1)[1] }
     assert.are.equal(doc.right, R.pair_path(doc))
@@ -1666,7 +1666,7 @@ describe("manicule review document pairs", function()
 
     assert.is_true(R.start({ files = files, label = "doc-cache" }))
     local state = R.state()
-    local uri = require("manicule.uri").for_path(doc.right)
+    local uri = require("pjollrig.uri").for_path(doc.right)
     assert.are.equal(uri, state.uris[1])
     assert.is_true(state.uri_set[uri])
     assert.are.equal(1, state.uri_index[uri])
@@ -1676,51 +1676,51 @@ describe("manicule review document pairs", function()
   end)
 
   it("comments on a doc pair count as the session's", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local doc = make_doc_pair("plan.md")
     assert.is_true(R.start({ files = { doc }, label = "doc-comment" }))
     vim.api.nvim_win_set_cursor(0, { 3, 0 })
-    local ui = require("manicule.ui")
+    local ui = require("pjollrig.ui")
     local original_prompt = ui.prompt
     ui.prompt = function(_opts, cb)
       cb("tighten this paragraph")
     end
-    require("manicule").add()
+    require("pjollrig").add()
     ui.prompt = original_prompt
 
     local state = R.state()
-    local records = require("manicule").list({ uris = state.uri_set }, { root = state.root })
+    local records = require("pjollrig").list({ uris = state.uri_set }, { root = state.root })
     assert.are.equal(1, #records)
     assert.are.equal("tighten this paragraph", records[1].body)
     assert.are.equal(state.uris[1], records[1].uri)
   end)
 end)
 
-describe("manicule review right panel + comments rail", function()
+describe("pjollrig review right panel + comments rail", function()
   before_each(function()
     ctx = H.setup({ review = { panel = { position = "right" } }, ui = { eol_expand = "rail" } })
   end)
   after_each(function()
     pcall(function()
-      require("manicule.ui.rail").close()
+      require("pjollrig.ui.rail").close()
     end)
     pcall(function()
-      require("manicule.review").stop()
+      require("pjollrig.review").stop()
     end)
     H.teardown(ctx)
     ctx = nil
   end)
 
   it("coexist: the rail opens beside a right-positioned panel", function()
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local files = make_pairs(1)
     assert.is_true(R.start({ files = files, label = "rail-coexist" }))
-    local panel_winid = require("manicule.review.panel").winid()
+    local panel_winid = require("pjollrig.review.panel").winid()
     assert.is_truthy(panel_winid, "panel window not open")
 
     -- Comment on the worktree line, then move the cursor onto it: the
     -- eol expansion renders into the rail (ui.eol_expand = "rail").
-    local ui = require("manicule.ui")
+    local ui = require("pjollrig.ui")
     local original_prompt = ui.prompt
     ui.prompt = function(_opts, cb)
       cb("rail me")
@@ -1729,13 +1729,13 @@ describe("manicule review right panel + comments rail", function()
     -- panel may have been rendered since; be explicit).
     for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
       local bufnr = vim.api.nvim_win_get_buf(winid)
-      if vim.bo[bufnr].modifiable and vim.bo[bufnr].filetype ~= "manicule-panel" then
+      if vim.bo[bufnr].modifiable and vim.bo[bufnr].filetype ~= "pjollrig-panel" then
         vim.api.nvim_set_current_win(winid)
         break
       end
     end
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
-    require("manicule").add()
+    require("pjollrig").add()
     ui.prompt = original_prompt
 
     local bufnr = vim.api.nvim_get_current_buf()
@@ -1744,7 +1744,7 @@ describe("manicule review right panel + comments rail", function()
     local rail_winid
     vim.wait(1000, function()
       for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-        if vim.bo[vim.api.nvim_win_get_buf(winid)].filetype == "manicule-rail" then
+        if vim.bo[vim.api.nvim_win_get_buf(winid)].filetype == "pjollrig-rail" then
           rail_winid = winid
           return true
         end

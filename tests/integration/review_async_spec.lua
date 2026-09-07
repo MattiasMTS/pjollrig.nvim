@@ -1,4 +1,4 @@
--- :ManiculeReview end-to-end latency: the command returns within a
+-- :PjollrigReview end-to-end latency: the command returns within a
 -- frame while SLOW subprocesses (a sleeping git/gh wrapper on PATH)
 -- resolve in the background, and the PR comment import lands AFTER the
 -- session is already on screen.
@@ -8,7 +8,7 @@ local H = require("helpers")
 local ctx
 
 local function panel()
-  return require("manicule.review.panel")
+  return require("pjollrig.review.panel")
 end
 
 local function panel_lines()
@@ -17,7 +17,7 @@ local function panel_lines()
 end
 
 local function wait_attached(timeout)
-  local R = require("manicule.review")
+  local R = require("pjollrig.review")
   vim.wait(timeout or 20000, function()
     local s = R.state()
     return s ~= nil and not s.resolving
@@ -41,7 +41,7 @@ local function slow_git(seconds)
   return bin
 end
 
-describe(":ManiculeReview async command", function()
+describe(":PjollrigReview async command", function()
   local saved_path
   local saved_cwd
 
@@ -49,13 +49,13 @@ describe(":ManiculeReview async command", function()
     ctx = H.setup()
     saved_path = vim.env.PATH
     saved_cwd = vim.uv.cwd()
-    vim.cmd("runtime plugin/manicule.lua")
+    vim.cmd("runtime plugin/pjollrig.lua")
   end)
   after_each(function()
     vim.env.PATH = saved_path
     pcall(vim.cmd.cd, saved_cwd)
     pcall(function()
-      require("manicule.review").stop()
+      require("pjollrig.review").stop()
     end)
     H.teardown(ctx)
     ctx = nil
@@ -70,13 +70,13 @@ describe(":ManiculeReview async command", function()
     vim.cmd.cd(root)
 
     local start = vim.uv.hrtime()
-    vim.cmd("ManiculeReview HEAD")
+    vim.cmd("PjollrigReview HEAD")
     local elapsed_ms = (vim.uv.hrtime() - start) / 1e6
     -- One blocked git call alone would cost >= 300ms.
     assert.is_true(elapsed_ms < 250, ("command blocked for %.0fms"):format(elapsed_ms))
 
     -- The shell is already up: resolving session, spinner row, ticker.
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local state = assert(R.state(), "no session right after the command")
     assert.is_true(state.resolving)
     assert.is_true(panel().is_open(), "panel not open while resolving")
@@ -142,15 +142,15 @@ describe(":ManiculeReview async command", function()
     vim.env.PATH = bin .. ":" .. saved_path
     vim.cmd.cd(root)
 
-    vim.cmd("ManiculeReview pr 42")
+    vim.cmd("PjollrigReview pr 42")
     wait_attached()
 
     -- Attached with the pair on screen, import still in flight.
-    local R = require("manicule.review")
+    local R = require("pjollrig.review")
     local state = assert(R.state())
     assert.are.equal("pr 42: Slow import", state.label)
     assert.are.equal(1, #state.files)
-    local store = require("manicule.store")
+    local store = require("pjollrig.store")
     assert.are.equal(0, #store.all(root), "import blocked the session open")
 
     -- The comments backfill once the sleeping endpoints answer, and the
@@ -179,7 +179,7 @@ describe(":ManiculeReview async command", function()
         err_msg = tostring(msg)
       end
     end
-    vim.cmd("ManiculeReview no-such-ref-anywhere")
+    vim.cmd("PjollrigReview no-such-ref-anywhere")
     vim.wait(10000, function()
       return err_msg ~= nil
     end, 10)
@@ -187,22 +187,22 @@ describe(":ManiculeReview async command", function()
 
     assert.is_truthy(err_msg, "resolve failure never notified")
     assert.is_truthy(err_msg:find("no%-such%-ref%-anywhere") or err_msg:find("merge%-base"), err_msg)
-    assert.is_nil(require("manicule.review").state(), "failed resolve left a session")
+    assert.is_nil(require("pjollrig.review").state(), "failed resolve left a session")
     assert.are.equal(tabs_before, #vim.api.nvim_list_tabpages())
     assert.is_false(panel().is_open())
   end)
 
-  it(":ManiculeReviewStop during a slow resolve leaves nothing behind", function()
+  it(":PjollrigReviewStop during a slow resolve leaves nothing behind", function()
     local root = H.git_repo(ctx, { ["s.lua"] = { "return 1" } })
     vim.fn.writefile({ "return 2" }, root .. "/s.lua")
     vim.env.PATH = slow_git("0.4") .. ":" .. saved_path
     vim.cmd.cd(root)
     local tabs_before = #vim.api.nvim_list_tabpages()
 
-    vim.cmd("ManiculeReview HEAD")
-    local R = require("manicule.review")
+    vim.cmd("PjollrigReview HEAD")
+    local R = require("pjollrig.review")
     assert.is_true(assert(R.state()).resolving)
-    vim.cmd("ManiculeReviewStop")
+    vim.cmd("PjollrigReviewStop")
 
     assert.is_nil(R.state())
     assert.are.equal(tabs_before, #vim.api.nvim_list_tabpages())
@@ -215,7 +215,7 @@ describe(":ManiculeReview async command", function()
     vim.wait(4000, function()
       return false
     end, 200)
-    assert.is_nil(R.state(), "stale resolve attached after :ManiculeReviewStop")
+    assert.is_nil(R.state(), "stale resolve attached after :PjollrigReviewStop")
     assert.are.equal(tabs_before, #vim.api.nvim_list_tabpages())
   end)
 end)

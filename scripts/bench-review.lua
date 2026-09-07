@@ -37,12 +37,12 @@ local function find_upvalue(fn, wanted)
   error("missing upvalue " .. wanted)
 end
 
-local root = assert(uv.fs_mkdtemp((vim.env.TMPDIR or "/tmp"):gsub("/$", "") .. "/manicule-bench-XXXXXX"))
+local root = assert(uv.fs_mkdtemp((vim.env.TMPDIR or "/tmp"):gsub("/$", "") .. "/pjollrig-bench-XXXXXX"))
 local stage_resolve = root .. "-resolve"
 local stage_only = root .. "-stage"
 
 local function cleanup()
-  if vim.env.MANICULE_BENCH_KEEP == "1" then
+  if vim.env.PJOLLRIG_BENCH_KEEP == "1" then
     print("benchmark repo: " .. root)
     return
   end
@@ -53,8 +53,8 @@ end
 
 local ok, err = xpcall(function()
   run({ "git", "init", "-q", "-b", "main", root })
-  run({ "git", "config", "user.email", "benchmark@manicule.local" }, root)
-  run({ "git", "config", "user.name", "Manicule Benchmark" }, root)
+  run({ "git", "config", "user.email", "benchmark@pjollrig.local" }, root)
+  run({ "git", "config", "user.name", "Pjollrig Benchmark" }, root)
   run({ "git", "config", "commit.gpgsign", "false" }, root)
 
   -- 667 modified + 667 deleted tracked files, then 666 untracked additions.
@@ -78,8 +78,8 @@ local ok, err = xpcall(function()
     write(path, ("local M = {}\nM.value = %d\nM.added = true\nreturn M\n"):format(index))
   end
 
-  local S = require("manicule.review.sources")
-  local G = require("manicule.review.git")
+  local S = require("pjollrig.review.sources")
+  local G = require("pjollrig.review.git")
 
   local resolve_ms, resolved = elapsed_ms(function()
     return assert(S.resolve({ "main" }, { cwd = root, stage_dir = stage_resolve }))
@@ -95,7 +95,7 @@ local ok, err = xpcall(function()
   assert(#staged == 2000)
 
   local comments = {}
-  local uri_mod = require("manicule.uri")
+  local uri_mod = require("pjollrig.uri")
   for index = 1, 500 do
     local pair = resolved.files[index]
     local path = pair.status == "D" and pair.left or pair.right
@@ -108,7 +108,7 @@ local ok, err = xpcall(function()
   end
   -- The store is stubbed by design: resolve/stage/panel-row building are
   -- the benchmark targets, not SQLite I/O.
-  package.loaded["manicule"] = {
+  package.loaded["pjollrig"] = {
     list = function()
       return comments
     end,
@@ -118,7 +118,7 @@ local ok, err = xpcall(function()
   -- session-cache change; older builds ignore the extra fields).
   -- pair_path and diffstat come off the REAL review module, captured
   -- before it is stubbed below.
-  local pair_path = require("manicule.review").pair_path
+  local pair_path = require("pjollrig.review").pair_path
   local session_uris = {}
   local session_uri_set = {}
   for index, pair in ipairs(resolved.files) do
@@ -132,12 +132,12 @@ local ok, err = xpcall(function()
   -- files bypass the session cache) before it is stubbed; the result
   -- feeds the stub below, mirroring the session cache, so the
   -- row-building numbers stay row-building only.
-  local real_diffstat = require("manicule.review").diffstat
+  local real_diffstat = require("pjollrig.review").diffstat
   local panel_diffstat_ms, session_diffstat = elapsed_ms(function()
     return real_diffstat(resolved.files)
   end)
   assert(#session_diffstat == 2000)
-  package.loaded["manicule.review"] = {
+  package.loaded["pjollrig.review"] = {
     state = function()
       return {
         files = resolved.files,
@@ -152,8 +152,8 @@ local ok, err = xpcall(function()
       return session_diffstat
     end,
   }
-  package.loaded["manicule.review.panel"] = nil
-  local panel = require("manicule.review.panel")
+  package.loaded["pjollrig.review.panel"] = nil
+  local panel = require("pjollrig.review.panel")
   -- build_file_rows sits behind render since the owned-buffer rewrite;
   -- chase it through the upvalue chain.
   local render = find_upvalue(panel.open, "render")
@@ -172,8 +172,8 @@ local ok, err = xpcall(function()
       end,
     }
   end
-  require("manicule.config").get().ui.icons = true
-  require("manicule.ui.icons")._reset()
+  require("pjollrig.config").get().ui.icons = true
+  require("pjollrig.ui.icons")._reset()
   local panel_icons_ms, icon_items = elapsed_ms(build_file_rows)
   assert(#icon_items == 2000)
 
