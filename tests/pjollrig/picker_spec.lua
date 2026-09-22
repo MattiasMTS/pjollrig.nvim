@@ -119,7 +119,7 @@ describe("pjollrig positional picker", function()
     assert.are.equal(id3, remaining[2].id)
   end)
 
-  it(":PjollrigDelete with no arg opens vim.ui.select with formatted items", function()
+  it(":PjollrigDelete with no arg opens the floating picker with formatted items", function()
     add("short", 1, "README.md")
     add("a much longer body that should be truncated to a fixed maximum width", 10, "src/aaaa/bbbb/cccc/dddd.lua")
     local resolved_id = add("already done", 5, "src/zzz.lua")
@@ -134,14 +134,14 @@ describe("pjollrig positional picker", function()
 
     local captured_items
     local captured_opts
-    local orig = vim.ui.select
-    vim.ui.select = function(items, opts, _cb)
+    local orig = require("pjollrig.ui.select").select
+    require("pjollrig.ui.select").select = function(items, opts, _cb)
       captured_items = items
       captured_opts = opts
     end
     vim.cmd("runtime plugin/pjollrig.lua")
     vim.cmd("PjollrigDelete")
-    vim.ui.select = orig
+    require("pjollrig.ui.select").select = orig
 
     assert.is_truthy(captured_items)
     local records = require("pjollrig").list()
@@ -185,16 +185,16 @@ describe("pjollrig positional picker", function()
     local notified
     local picker_called = false
     local orig_notify = vim.notify
-    local orig_select = vim.ui.select
+    local orig_select = require("pjollrig.ui.select").select
     vim.notify = function(msg, level)
       notified = { msg = msg, level = level }
     end
-    vim.ui.select = function()
+    require("pjollrig.ui.select").select = function()
       picker_called = true
     end
     vim.cmd("PjollrigDelete")
     vim.notify = orig_notify
-    vim.ui.select = orig_select
+    require("pjollrig.ui.select").select = orig_select
 
     assert.is_false(picker_called)
     assert.is_truthy(notified)

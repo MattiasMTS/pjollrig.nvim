@@ -136,6 +136,89 @@ describe("pjollrig render lifecycle", function()
     assert.is_true(wait_for_popup_count("render note", 0))
   end)
 
+  it("skips viewport store reads when popups are suppressed and paints after restoring them", function()
+    local render = require("pjollrig.ui.render")
+    local store = require("pjollrig.store")
+    local adapter = require("pjollrig.adapter")
+    require("pjollrig").add({ body = "viewport gate" })
+    assert.is_true(wait_for_popup_count("viewport gate", 1))
+    local function drain()
+      local done = false
+      vim.schedule(function()
+        done = true
+      end)
+      assert.is_true(vim.wait(1000, function()
+        return done
+      end, 10))
+    end
+    for _, mode in ipairs({ "hidden", "inline", "toggle" }) do
+      if mode == "toggle" then
+        render.set_display_mode("float")
+        render.hide()
+      else
+        render.set_display_mode(mode)
+      end
+      drain()
+      local reads, identities = 0, 0
+      local original_all, original_identify = store.all, adapter.identify
+      store.all = function(...)
+        reads = reads + 1
+        return original_all(...)
+      end
+      adapter.identify = function(...)
+        identities = identities + 1
+        return original_identify(...)
+      end
+      local ok, err = pcall(function()
+        vim.api.nvim_exec_autocmds("CursorMoved", { buffer = 0 })
+        drain()
+      end)
+      store.all, adapter.identify = original_all, original_identify
+      assert.is_true(ok, err)
+      assert.are.equal(0, reads, mode)
+      assert.are.equal(0, identities, mode)
+      assert.are.equal(0, #floating_windows_containing("viewport gate"))
+    end
+    render.show()
+    assert.is_true(wait_for_popup_count("viewport gate", 1))
+    render.set_display_mode("eol")
+    assert.is_true(wait_for_popup_count("viewport gate", 1))
+  end)
+
+  it("skips comment lookups while navigating a picker", function()
+    require("pjollrig.ui.select").select({ "Clipboard", "WezTerm" }, {}, function() end)
+    local function drain()
+      local done = false
+      vim.schedule(function()
+        done = true
+      end)
+      assert.is_true(vim.wait(1000, function()
+        return done
+      end))
+    end
+    drain()
+    local store, adapter = require("pjollrig.store"), require("pjollrig.adapter")
+    local original_all, original_identify = store.all, adapter.identify
+    local reads, identities = 0, 0
+    store.all = function(...)
+      reads = reads + 1
+      return original_all(...)
+    end
+    adapter.identify = function(...)
+      identities = identities + 1
+      return original_identify(...)
+    end
+    local ok, err = pcall(function()
+      vim.api.nvim_win_set_cursor(0, { 2, 0 })
+      vim.api.nvim_exec_autocmds("CursorMoved", { buffer = 0 })
+      drain()
+    end)
+    store.all, adapter.identify = original_all, original_identify
+    assert.is_true(ok, err)
+    assert.are.equal(0, reads)
+    assert.are.equal(0, identities)
+  end)
+
   it("keeps popups while the source buffer stays visible but loses focus", function()
     local pjollrig = require("pjollrig")
     local source_win = vim.api.nvim_get_current_win()

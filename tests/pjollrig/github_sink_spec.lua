@@ -277,6 +277,141 @@ describe("pjollrig github sink", function()
     assert.is_nil(argv:find("/reviews", 1, true))
   end)
 
+  for _, change in ipairs({ "edit", "edit after cache refresh", "delete" }) do
+    it("preserves a concurrent " .. change .. " when GitHub finishes posting", function()
+      local gh = fake_gh(ctx.artifact_root)
+      vim.env.PATH = gh.bin .. ":" .. saved_path
+      local store = require("pjollrig.store")
+      local rec = record({ body = "sent body" })
+      rec.id, rec.scope = "in-flight", "project"
+      store.put(ctx.root, rec)
+      assert.is_true(store.save(ctx.root))
+      rec = store.get(ctx.root, rec.id)
+      local helpers = require("pjollrig.sinks.helpers")
+      local original_async = helpers.system_async
+      local complete_post, completed
+      helpers.system_async = function(argv, opts, cb)
+        if argv[2] == "api" then
+          complete_post = cb
+        else
+          original_async(argv, opts, cb)
+        end
+      end
+      local ok, err = pcall(function()
+        require("pjollrig.sinks.github").setup().send({ rec }, { pr = 42 }, function(success)
+          completed = success
+        end)
+        assert.is_true(vim.wait(2000, function()
+          return complete_post ~= nil
+        end, 10))
+        if change == "edit after cache refresh" then
+          store.mark_dirty(ctx.root)
+          assert.is_true(store.save(ctx.root))
+        end
+        if change == "delete" then
+          store.remove(ctx.root, rec.id)
+        else
+          local current = store.get(ctx.root, rec.id)
+          current.body = "unsent correction"
+          store.mark_dirty(ctx.root)
+        end
+        assert.is_true(store.save(ctx.root))
+        complete_post({ code = 0, stdout = "{}", stderr = "" })
+        assert.is_true(completed)
+        local current = store.get(ctx.root, rec.id)
+        if change == "delete" then
+          assert.is_nil(current)
+        else
+          assert.are.equal("unsent correction", current.body)
+          assert.is_nil(current.meta and current.meta.github_sent)
+        end
+      end)
+      helpers.system_async = original_async
+      assert.is_true(ok, err)
+    end)
+  end
+
+  it("still marks a record sent when its range drifted while GitHub was posting", function()
+    local gh = fake_gh(ctx.artifact_root)
+    vim.env.PATH = gh.bin .. ":" .. saved_path
+    local store = require("pjollrig.store")
+    local rec = record({ body = "sent body" })
+    rec.id, rec.scope = "drifting", "project"
+    store.put(ctx.root, rec)
+    assert.is_true(store.save(ctx.root))
+    rec = store.get(ctx.root, rec.id)
+    local helpers = require("pjollrig.sinks.helpers")
+    local original_async = helpers.system_async
+    local complete_post, completed
+    helpers.system_async = function(argv, opts, cb)
+      if argv[2] == "api" then
+        complete_post = cb
+      else
+        original_async(argv, opts, cb)
+      end
+    end
+    local ok, err = pcall(function()
+      require("pjollrig.sinks.github").setup().send({ rec }, { pr = 42 }, function(success)
+        completed = success
+      end)
+      assert.is_true(vim.wait(2000, function()
+        return complete_post ~= nil
+      end, 10))
+      -- The commented file changed under the extmark; position sync
+      -- persisted the moved range before gh returned.
+      local current = store.get(ctx.root, rec.id)
+      local original_line = current.range.start[1]
+      current.range = { start = { original_line + 3, 0 }, end_ = { current.range.end_[1] + 3, 0 } }
+      store.mark_dirty(ctx.root)
+      assert.is_true(store.save(ctx.root))
+      complete_post({ code = 0, stdout = "{}", stderr = "" })
+      assert.is_true(completed)
+      current = store.get(ctx.root, rec.id)
+      assert.are.equal("number", type(current.meta and current.meta.github_sent), "marker must survive range drift")
+      assert.are.equal(original_line + 3, current.range.start[1], "drifted range must be kept")
+    end)
+    helpers.system_async = original_async
+    assert.is_true(ok, err)
+  end)
+
+  for _, change in ipairs({ "edit", "delete" }) do
+    it("preserves a concurrent " .. change .. " when resolving a GitHub thread", function()
+      local store = require("pjollrig.store")
+      local rec = record({ body = "imported body" })
+      rec.id, rec.scope = "thread-flight", "project"
+      rec.meta = { github = { imported = true, thread_node = "RT_1" } }
+      store.put(ctx.root, rec)
+      assert.is_true(store.save(ctx.root))
+      local helpers = require("pjollrig.sinks.helpers")
+      local original_async = helpers.system_async
+      local complete
+      helpers.system_async = function(_, _, cb)
+        complete = cb
+      end
+      require("pjollrig.review.github").toggle_resolve({ id = rec.id, project_root = ctx.root })
+      helpers.system_async = original_async
+      assert.are.equal("function", type(complete))
+      -- Replace the cached projection before editing the live version.
+      store.mark_dirty(ctx.root)
+      assert.is_true(store.save(ctx.root))
+      if change == "delete" then
+        store.remove(ctx.root, rec.id)
+      else
+        store.get(ctx.root, rec.id).body = "newer body"
+        store.mark_dirty(ctx.root)
+      end
+      assert.is_true(store.save(ctx.root))
+      complete({ code = 0, stdout = "{}", stderr = "" })
+      local current = store.get(ctx.root, rec.id)
+      if change == "delete" then
+        assert.is_nil(current)
+      else
+        assert.are.equal("newer body", current.body)
+        assert.is_true(current.meta.github.resolved)
+      end
+    end)
+  end
+
   it("marks records sent so a re-send posts nothing new", function()
     local gh = fake_gh(ctx.artifact_root)
     vim.env.PATH = gh.bin .. ":" .. saved_path
@@ -455,7 +590,7 @@ describe("pjollrig github sink", function()
     assert.are.same({ "github" }, require("pjollrig.sinks").list())
     local spec = require("pjollrig.sinks").get("github")
     assert.are.equal("integration", spec.type)
-    assert.is_false(spec.clear_on_success)
+    assert.is_true(spec.clear_on_success)
     assert.is_true(spec.accepts_verdict)
     assert.are.equal("github_sent", spec.sent_marker)
   end)

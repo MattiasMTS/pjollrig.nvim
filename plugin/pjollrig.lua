@@ -106,7 +106,9 @@ local send_verdicts = {
 vim.api.nvim_create_user_command("PjollrigSend", function(opts)
   local sink = opts.fargs[1]
   local ctx
-  if opts.fargs[2] ~= nil then
+  if sink == "wezterm" and opts.fargs[2] == "pick" and #opts.fargs == 2 then
+    ctx = { pick = true }
+  elseif opts.fargs[2] ~= nil then
     local event = send_verdicts[opts.fargs[2]]
     if not event then
       vim.notify(
@@ -135,6 +137,9 @@ end, {
   complete = function(arglead, cmdline)
     -- Second argument after `github`: complete the verdict words.
     local sink = cmdline:match("PjollrigSend%s+(%S+)%s")
+    if sink == "wezterm" then
+      return prefix_filter(arglead, { "pick" })
+    end
     if sink == "github" then
       return prefix_filter(arglead, { "approve", "comment", "request-changes" })
     end
@@ -325,6 +330,15 @@ vim.api.nvim_create_user_command("PjollrigReviewStop", function()
     vim.notify(err, vim.log.levels.WARN)
   end
 end, {})
+
+vim.api.nvim_create_user_command("PjollrigReviewFiles", function(opts)
+  require("pjollrig.review").set_file_mode(opts.args)
+end, {
+  nargs = "?",
+  complete = function(arglead)
+    return prefix_filter(arglead, { "single", "all" })
+  end,
+})
 
 -- `:PjollrigReviewDiffMode` with no argument toggles split <-> unified.
 vim.api.nvim_create_user_command("PjollrigReviewDiffMode", function(opts)

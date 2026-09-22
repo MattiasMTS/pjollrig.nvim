@@ -618,6 +618,9 @@ end
 ---@param root string
 ---@return boolean ok, string? err
 function refresh_cache_entry(entry, db, root)
+  -- Read the watermark first: a peer commit after the projection read
+  -- must remain visible to the next poll, not be marked as consumed.
+  local last_event_id = sqlite_last_event_id(db, root)
   local fresh_records, read_err = sqlite_read_records(db, root)
   if read_err then
     return false, read_err
@@ -625,7 +628,7 @@ function refresh_cache_entry(entry, db, root)
   entry.records = fresh_records
   entry.base_by_id = by_id(fresh_records)
   entry.removed = {}
-  entry.last_seen_event_id = sqlite_last_event_id(db, root)
+  entry.last_seen_event_id = last_event_id
   entry.dirty = false
   return true
 end

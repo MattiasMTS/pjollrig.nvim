@@ -12,7 +12,7 @@
 --     returns within a frame while rev-parse/merge-base/changed-files/
 --     materialize (and, for `pr`, `gh pr view` + any fetch) run in the
 --     background. The `chat` resolver (review/chat.lua) schedules its
---     transcript scan and continues through vim.ui.select callbacks.
+--     transcript scan and continues through the floating picker callbacks.
 --     Resolvers without a `resolve_async` (dirs, user registrations)
 --     run their sync `resolve` inside one scheduled step: still off
 --     the command's own frame, just not incremental.
@@ -457,7 +457,7 @@ M.register({
 -- `chat all`). Registered unconditionally — like `pr` with gh missing, a
 -- missing ~/.claude/projects fails the resolve with a clear message
 -- instead of hiding the keyword. Registered AFTER git so it shadows the
--- bare-ref match for `chat`. Its vim.ui.select pickers continue the
+-- bare-ref match for `chat`. Its floating pickers continue the
 -- resolve_async chain, so they open over the already-visible review
 -- shell and need no registry support beyond the per-resolver
 -- `resolve_async`; the module loads lazily, only when `chat` is used.

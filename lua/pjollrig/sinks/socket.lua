@@ -65,7 +65,7 @@ function M.setup(opts)
     -- auto-dispatch, and completion. `is_available` would unregister it
     -- entirely and break the review-driven dispatch, hence `hidden`.
     hidden = true,
-    clear_on_success = opts.clear_on_success ~= false,
+    clear_on_success = opts.clear_on_success,
     validate = function(ctx)
       if type(ctx.socket) ~= "string" or ctx.socket == "" then
         return false, "pjollrig: socket sink requires ctx.socket (pipe path)"

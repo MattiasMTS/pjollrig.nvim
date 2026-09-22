@@ -33,7 +33,8 @@ local function defaults()
     submit_delay_ms = 120,
     paste_chunk_bytes = 1024,
     paste_chunk_delay_ms = 80,
-    clear_on_success = false,
+    paste_retries = 2,
+    clear_on_success = true,
     cache = true,
     cache_ttl_ms = DEFAULT_CACHE_TTL_MS,
     process_fallback = true,
@@ -509,6 +510,48 @@ local function apply_agent_metadata(surface, metadata)
   return out
 end
 
+-- Worktree -> owning cmux workspace.
+--
+-- When a review is opened in a linked worktree, the agent that spawned it is
+-- not in this cmux workspace: this one holds an editor and a shell, the agent
+-- sits in the session the worktree was created from. worktrunk's post-start
+-- hook records that session's CMUX_WORKSPACE_ID at
+-- `<git-common-dir>/wt/cmux/<branch with / as ->`, so read it back rather than
+-- guessing. Agent-agnostic by construction: the hook writes the file whoever
+-- ran `wt switch --create`.
+---@return string? workspace_id
+local function worktree_owner_workspace_id()
+  -- Anchor git to the buffer's directory: nvim's cwd may still be the main
+  -- checkout when a worktree file was opened by path.
+  local dir = vim.fn.expand("%:p:h")
+  if dir == "" or vim.fn.isdirectory(dir) == 0 then
+    dir = vim.fn.getcwd()
+  end
+  local function git(...)
+    local r = helpers.system({ "git", "-C", dir, ... })
+    if not r or r.code ~= 0 then
+      return ""
+    end
+    return vim.trim(r.stdout or "")
+  end
+  local common = git("rev-parse", "--path-format=absolute", "--git-common-dir")
+  local private = git("rev-parse", "--path-format=absolute", "--git-dir")
+  -- Equal paths mean the main checkout, where the current workspace is right.
+  if common == "" or private == "" or common == private then
+    return nil
+  end
+  local branch = git("branch", "--show-current")
+  if branch == "" then
+    return nil
+  end
+  local ok, lines = pcall(vim.fn.readfile, common .. "/wt/cmux/" .. branch:gsub("/", "-"))
+  if not ok or type(lines) ~= "table" then
+    return nil
+  end
+  local id = vim.trim(lines[1] or "")
+  return id ~= "" and id or nil
+end
+
 ---Return agent-like surfaces in the current cmux workspace.
 ---@param opts? table
 ---@return table[]? surfaces, string? err
@@ -639,6 +682,19 @@ function M.list_agent_surfaces(opts)
   end
 
   if #matches == 0 then
+    -- Nothing agent-like here. If this is a linked worktree, the agent lives
+    -- in the session that created it; look there before giving up. Guarded by
+    -- `_worktree_hop` so the retry can only happen once.
+    if not opts._worktree_hop then
+      local owner = worktree_owner_workspace_id()
+      if owner and owner ~= opts.workspace_id then
+        local hop = vim.tbl_extend("force", opts, { workspace_id = owner, _worktree_hop = true })
+        local owner_surfaces, owner_err = M.list_agent_surfaces(hop)
+        if owner_surfaces and #owner_surfaces > 0 then
+          return finish(owner_surfaces, owner_err)
+        end
+      end
+    end
     local dropped_note = (dropped_states or 0) > 0
         and ("; dropped " .. tostring(dropped_states) .. " malformed state file(s)")
       or ""
@@ -730,93 +786,70 @@ end
 -- Compose an actionable error for a chunked paste that failed partway. The
 -- cmux CLI surface used here pastes per chunk (no atomic append+paste), so a
 -- failure can leave a truncated review in the pane; tell the caller how many
--- chunks landed and that the pane should be cleared before retrying.
+-- chunks landed and that the pane should be cleared before retrying. When
+-- nothing pasted the pane is untouched, so say a plain retry is safe.
 local function partial_paste_error(pasted, total, detail)
-  local msg = string.format(
-    "cmux paste failed after %d/%d chunks; the pane holds a truncated review — clear it before retrying",
-    pasted,
-    total
-  )
+  local msg
+  if pasted == 0 then
+    msg =
+      string.format("cmux paste failed before any of %d chunks landed; the pane is untouched — safe to retry", total)
+  else
+    msg = string.format(
+      "cmux paste failed after %d/%d chunks; the pane holds a truncated review — clear it before retrying",
+      pasted,
+      total
+    )
+  end
   if detail and detail ~= "" then
     msg = msg .. " (" .. detail .. ")"
   end
   return msg
 end
 
--- Chunked set-buffer/paste-buffer path, fully async. The set-buffer
--- uploads are independent (each chunk gets a distinct buffer name), so
--- they all fan out concurrently up front; the paste-buffer sequence is
--- then chained strictly in chunk order, with the inter-chunk delay via a
--- deferred timer instead of a busy-wait. `done(ok, err)` fires once.
+-- Upload and paste one chunk at a time. This bounds child-process load and
+-- avoids this send competing with itself for cmux's buffer storage.
+-- Retain retries for dropped uploads, including contention with other clients.
 local function send_chunked(opts, ref, text, chunk_bytes, done)
   local chunks = chunk_text(text, chunk_bytes)
   local total = #chunks
+  local retries = math.max(0, math.floor(tonumber(opts.paste_retries) or 2))
   local stamp = string.format("%d", vim.uv.hrtime())
-  local function buffer_name(idx)
-    return "pjollrig-" .. stamp .. "-" .. idx
-  end
+  local send_chunk
 
-  -- Fan out the independent uploads. Callbacks land on the main loop
-  -- (helpers.system_async schedules them), so no locking is needed.
-  local set_results = {}
-  local waiting -- paste chain blocked on a not-yet-finished set-buffer
-  for idx, chunk in ipairs(chunks) do
-    helpers.system_async({ cli(opts), "set-buffer", "--name", buffer_name(idx), "--", chunk }, nil, function(result)
-      set_results[idx] = result
-      if waiting and waiting.idx == idx then
-        local resume = waiting.resume
-        waiting = nil
-        resume(result)
-      end
+  local function retry_or_fail(idx, attempt, detail)
+    if attempt >= retries then
+      done(false, partial_paste_error(idx - 1, total, detail))
+      return
+    end
+    defer_ms(opts.paste_chunk_delay_ms, function()
+      send_chunk(idx, attempt + 1)
     end)
   end
 
-  local paste_chunk
-  local function on_set_ready(idx, set_result)
-    if set_result.code ~= 0 then
-      -- Chunks 1..idx-1 were pasted before this chunk's upload failure
-      -- surfaced; report how far we got so the caller knows the pane
-      -- holds a partial review.
-      done(false, partial_paste_error(idx - 1, total, (set_result.stderr:gsub("%s+$", ""))))
-      return
-    end
-    helpers.system_async(
-      { cli(opts), "paste-buffer", "--name", buffer_name(idx), "--surface", ref },
-      nil,
-      function(paste_result)
-        if paste_result.code ~= 0 then
-          -- Chunk idx failed after 1..idx-1 were pasted: the pane now holds a
-          -- truncated review. Surface that so a retry doesn't silently
-          -- duplicate content into a half-pasted pane.
-          done(false, partial_paste_error(idx - 1, total, (paste_result.stderr:gsub("%s+$", ""))))
+  send_chunk = function(idx, attempt)
+    local name = "pjollrig-" .. stamp .. "-" .. idx
+    helpers.system_async({ cli(opts), "set-buffer", "--name", name, "--", chunks[idx] }, nil, function(upload)
+      if upload.code ~= 0 then
+        retry_or_fail(idx, attempt, (upload.stderr:gsub("%s+$", "")))
+        return
+      end
+      helpers.system_async({ cli(opts), "paste-buffer", "--name", name, "--surface", ref }, nil, function(paste)
+        if paste.code ~= 0 then
+          retry_or_fail(idx, attempt, (paste.stderr:gsub("%s+$", "")))
           return
         end
-        if idx >= total then
-          done(true, nil)
+        if idx == total then
+          done(true)
           return
         end
         defer_ms(opts.paste_chunk_delay_ms, function()
-          paste_chunk(idx + 1)
+          send_chunk(idx + 1, 0)
         end)
-      end
-    )
+      end)
+    end)
   end
 
-  paste_chunk = function(idx)
-    local set_result = set_results[idx]
-    if set_result then
-      on_set_ready(idx, set_result)
-    else
-      waiting = {
-        idx = idx,
-        resume = function(result)
-          on_set_ready(idx, result)
-        end,
-      }
-    end
-  end
-
-  paste_chunk(1)
+  send_chunk(1, 0)
 end
 
 local function send_text(opts, surface, text, cb)
@@ -879,7 +912,7 @@ local function pick_surface(opts, cb)
     cb(surfaces[1])
     return
   end
-  vim.ui.select(surfaces, {
+  require("pjollrig.ui.select").select(surfaces, {
     prompt = opts.picker_prompt,
     format_item = surface_label,
   }, function(surface)
@@ -902,7 +935,7 @@ function M.setup(opts)
     type = "integration",
     label = "cmux agent",
     description = "send review to a running cmux coding agent",
-    clear_on_success = opts.clear_on_success ~= false,
+    clear_on_success = opts.clear_on_success,
     pre_text = opts.pre_text,
     post_text = opts.post_text,
     validate = function(ctx)

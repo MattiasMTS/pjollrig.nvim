@@ -11,6 +11,37 @@
 
 local M = {}
 
+---Compare a live comment with a send-time snapshot to decide whether
+---the delivered content is still what the user has. Ignores:
+---  - the sink's delivery `marker` (persisting it bumps nothing the user
+---    wrote),
+---  - `updated_at` (bookkeeping), and
+---  - `range`: async sinks ack long after dispatch, and position sync
+---    rewrites `record.range` as the file moves under the anchor. That is
+---    drift, not an edit, so it must not block a `clear_on_success`
+---    delete or a sent-marker stamp.
+---A body/uri/resolved/meta change made while the sink was busy still
+---counts as a real edit and keeps the record.
+function M.same_record(current, snapshot, marker)
+  if not current or not snapshot then
+    return false
+  end
+  local function comparable(record)
+    local copy = vim.tbl_extend("force", {}, record)
+    copy.updated_at = nil
+    copy.range = nil
+    if marker and type(copy.meta) == "table" then
+      copy.meta = vim.tbl_extend("force", {}, copy.meta)
+      copy.meta[marker] = nil
+      if next(copy.meta) == nil then
+        copy.meta = nil
+      end
+    end
+    return copy
+  end
+  return vim.deep_equal(comparable(current), comparable(snapshot))
+end
+
 -- Split on LF keeping blank lines (comment bodies and pre/post text are
 -- prose; blank lines are content). Kept local so sinks/helpers stays
 -- self-contained for third-party consumers — do not fold into

@@ -1302,6 +1302,11 @@ local function jump_to_comment()
     return
   end
   review.open_pair(pair_index)
+  local all = require("pjollrig.review.all")
+  if all.is_active(vim.api.nvim_get_current_buf()) then
+    all.jump_file(pair_index, comment.line)
+    return
+  end
   -- review.open_pair leaves focus in the commentable window (right side;
   -- the left buffer for D pairs).
   local winid = vim.api.nvim_get_current_win()
@@ -1457,7 +1462,7 @@ local function setup_panel_keymaps(bufnr)
       end
       local state = require("pjollrig.review").state()
       local pair = state and state.files[idx]
-      if pair then
+      if pair and require("pjollrig.config").get().review.file_mode ~= "all" then
         local uri = state.uris[idx]
         local records = require("pjollrig").list({ uris = { [uri] = true } }, { sync = false, root = state.root })
         if #records > 0 then

@@ -215,6 +215,51 @@ describe("pjollrig.store session scope", function()
     assert.is_truthy(vim.uv.fs_stat(store.path(tmp_root)))
   end)
 
+  it("does not consume a peer event committed just after reading the projection", function()
+    local sqlite = require("pjollrig.sqlite")
+    local original_open = sqlite.open
+    local injected, peer = false, nil
+    sqlite.open = function(path)
+      local db, err = original_open(path)
+      if db then
+        local original_rows = db.rows
+        db.rows = function(self, sql, params)
+          local rows, rows_err = original_rows(self, sql, params)
+          if not injected and sql:find("SELECT data FROM records", 1, true) then
+            injected = true
+            peer = new_store_client()
+            peer.put(tmp_root, {
+              id = "between-reads",
+              uri = "file://" .. tmp_root .. "/peer.lua",
+              scope = "project",
+              project_root = tmp_root,
+              range = { start = { 0, 0 }, end_ = { 0, 0 } },
+              body = "committed after the projection read",
+              created_at = 1,
+              updated_at = 1,
+            })
+            assert.is_true(peer.save(tmp_root))
+          end
+          return rows, rows_err
+        end
+      end
+      return db, err
+    end
+    local ok, err = pcall(function()
+      local store = require("pjollrig.store")
+      assert.are.equal(0, #store.load(tmp_root))
+      assert.is_true(injected)
+      local records = store.all(tmp_root)
+      assert.are.equal(1, #records)
+      assert.are.equal("between-reads", records[1].id)
+    end)
+    sqlite.open = original_open
+    if peer then
+      peer._reset()
+    end
+    assert.is_true(ok, err)
+  end)
+
   it("syncs project records written by another store client", function()
     local store_a = require("pjollrig.store")
     local store_b = new_store_client()

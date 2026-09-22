@@ -26,7 +26,7 @@ macOS and Linux are supported; Windows is untested and unsupported.
 - Storage is local and durable. Project records are transactionally written
   to SQLite; same-project Neovim sessions discover changes by polling the
   event log.
-- External systems are sinks, not dependencies. Clipboard and cmux are
+- External systems are sinks, not dependencies. Clipboard, cmux, and WezTerm are
   integrations layered on top of the core record model.
 
 ## Module Map
@@ -47,9 +47,10 @@ lua/pjollrig/review.lua         review session core (start/open/next/prev/finish
 lua/pjollrig/review/panel.lua   the comments/review panel (tabs, rows, project mode)
 lua/pjollrig/review/git.lua     git plumbing (rev-parse, merge-base, changed files, staging)
 lua/pjollrig/review/inline.lua  unified-mode diff paint (virtual lines, folds, hunk nav)
+lua/pjollrig/review/all.lua     continuous all-files view, source row mapping, snapshot guards
 lua/pjollrig/review/sources.lua resolver registry (dirs, git ref, pr via gh CLI, chat)
 lua/pjollrig/review/chat.lua    Claude Code transcript reader behind the `chat` resolver
-lua/pjollrig/sinks/             sink registry and bundled sinks (clipboard, cmux, github, socket)
+lua/pjollrig/sinks/             sink registry and bundled sinks (clipboard, cmux, wezterm, github, socket)
 ```
 
 `init.lua` lazy-requires most modules so command/key based lazy-loading has
@@ -276,7 +277,9 @@ M.send
   -> M.list(filter)
   -> sinks.dispatch(name, records, ctx, cb)
   -> User PjollrigSent
-  -> optional clear_on_success deletes sent records
+  -> clear_on_success (default true for every sink) deletes sent records
+     (only those still matching the send-time snapshot by content;
+      helpers.same_record ignores range drift, updated_at, sent marker)
 ```
 
 ## Events
@@ -310,7 +313,7 @@ require("pjollrig").register_sink({
   label = "Tool",
   pre_text = "Optional text before formatted comments.",
   post_text = "Optional text after formatted comments.",
-  clear_on_success = false,
+  clear_on_success = true, -- default; false keeps comments after a send
   validate = function(ctx) return true end,
   send = function(comments, ctx, cb) cb(true) end,
 })
@@ -383,6 +386,19 @@ worktree right). One active session at a time, in its own tab page.
 - Right side: real worktree file where it exists; comments anchor natively.
 - Left side: read-only staged baseline copy (modifiable=false, readonly=true,
   bufhidden=wipe, swapfile=false).
+- `review.file_mode = "all"` uses an owned `pjollrig-review-all` scratch
+  buffer with source mappings for every code row. File construction yields
+  between file batches; switching panel rows reuses the buffer without
+  recomputing diffs. Cursor movement only reads the mapping and updates the
+  breadcrumb/panel index. `R` explicitly rebuilds the snapshot.
+- All-files comment creation resolves to a real source buffer/range BEFORE
+  opening the editor, then verifies the source snapshot again on submission.
+  Headers, removed lines and mixed-file/side ranges are not commentable.
+  Inline comment annotations use a separate namespace, never editable-source
+  anchor extmarks. The existing own-surface gate excludes the synthetic buffer
+  from position persistence; no display coordinates can leak into the store.
+- `:PjollrigReviewFiles single|all` switches file scope independently of the
+  saved per-file diff presentation. The initial all-files renderer is unified.
 - Diff rendering is chosen by `review.diff_mode`; `:PjollrigReviewDiffMode`
   flips it and re-opens the current index.
   - `split` (default): `:diffsplit` pairs (left split beside right).
@@ -517,7 +533,7 @@ worktree right). One active session at a time, in its own tab page.
 **GitHub sink** (`lua/pjollrig/sinks/github.lua`): posts the batch as a PR
 review via `gh api` (PR from `ctx.pr` or `gh pr view`, repo from
 `gh repo view`; argv-only, JSON body via `--input` temp file; registers only
-when `gh` is executable; `clear_on_success = false` by default).
+when `gh` is executable).
 
 **Socket sink** (`lua/pjollrig/sinks/socket.lua`):
 - Generic JSONL-over-unix-socket transport; bundled, enabled by default.

@@ -11,6 +11,7 @@ local sinks = {}
 local builtin_integrations = {
   clipboard = "pjollrig.sinks.clipboard",
   cmux = "pjollrig.sinks.cmux",
+  wezterm = "pjollrig.sinks.wezterm",
   github = "pjollrig.sinks.github",
   socket = "pjollrig.sinks.socket",
 }
@@ -20,6 +21,9 @@ local builtin_defaults = {
     enabled = true,
   },
   cmux = {
+    enabled = true,
+  },
+  wezterm = {
     enabled = true,
   },
   github = {
@@ -90,9 +94,9 @@ end
 ---  format            function?  per-record formatter
 ---  validate          function?  gate the dispatch; return false, err to reject
 ---  health            function?  returns optional diagnostic info for checkhealth
----  clear_on_success  boolean?   if true, core deletes every record in the batch
----                               after the sink's send callback reports ok=true.
----                               default: false (records persist).
+---  clear_on_success  boolean?   core deletes every record in the batch after
+---                               the sink's send callback reports ok=true.
+---                               default: true; pass false to keep records.
 ---  hidden            boolean?   if true, the sink stays registered (dispatchable
 ---                               by name via `get`/`dispatch`) but is excluded
 ---                               from `list()`, i.e. from interactive pickers,
@@ -116,6 +120,7 @@ function M.register(spec)
     error(("pjollrig: sink %q is already registered"):format(spec.name))
   end
   spec.type = spec.type or "sink"
+  spec.clear_on_success = spec.clear_on_success ~= false
   sinks[spec.name] = spec
 end
 

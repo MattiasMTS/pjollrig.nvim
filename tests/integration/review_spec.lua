@@ -452,9 +452,9 @@ describe("pjollrig review session", function()
     local saved_cwd = vim.uv.cwd()
     vim.cmd.cd(root)
 
-    local original_select = vim.ui.select
+    local original_select = require("pjollrig.ui.select").select
     local seen_item
-    vim.ui.select = function(items, select_opts, on_choice)
+    require("pjollrig.ui.select").select = function(items, select_opts, on_choice)
       seen_item = select_opts.format_item(items[1])
       on_choice(items[1])
     end
@@ -464,7 +464,7 @@ describe("pjollrig review session", function()
     vim.wait(2000, function()
       return seen_item ~= nil
     end)
-    vim.ui.select = original_select
+    require("pjollrig.ui.select").select = original_select
     -- PATH/cwd stay in place until the ASYNC resolve chain (gh pr view,
     -- staging) has attached — the command only opened the shell.
     if ok then

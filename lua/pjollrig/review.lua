@@ -1,8 +1,8 @@
 -- pjollrig.nvim: review session core.
 --
 -- Opens baseline-vs-worktree file pairs as diffs, one active session at
--- a time. Whichever mode is active, the buffer the user comments in is
--- the real worktree file, so comments anchor natively.
+-- a time. Per-file modes use real worktree buffers; the all-files view
+-- maps display rows back to source buffers before creating comments.
 --
 --   * `review.diff_mode = "split"` (default) — plain `:diffsplit`:
 --     read-only staged baseline on the left, worktree file on the right.
@@ -227,6 +227,27 @@ function M.open_pair(index)
     require("pjollrig.review.panel").open()
   end
   vim.api.nvim_set_current_tabpage(session.tab)
+  local all = require("pjollrig.review.all")
+  if review_config().file_mode == "all" then
+    local win
+    for _, candidate in ipairs(vim.api.nvim_tabpage_list_wins(session.tab)) do
+      if all.is_active(vim.api.nvim_win_get_buf(candidate)) then
+        win = candidate
+        break
+      end
+    end
+    if win then
+      vim.api.nvim_set_current_win(win)
+    else
+      close_session_windows()
+      map_navigation(all.open(session))
+    end
+    session.breadcrumb_win = nil
+    all.jump_file(index)
+    require("pjollrig.review.panel").sync_index(index)
+    return
+  end
+  all.clear()
   close_session_windows()
 
   -- Winbar breadcrumb data: the cached per-pair diffstat (computed
@@ -534,6 +555,24 @@ function M.set_diff_mode(mode)
   return mode
 end
 
+---Choose one file at a time or a continuous unified review of all files.
+function M.set_file_mode(mode)
+  local cfg = require("pjollrig.config").get().review
+  if mode == nil or mode == "" then
+    mode = cfg.file_mode == "all" and "single" or "all"
+  end
+  if mode ~= "all" and mode ~= "single" then
+    local err = 'pjollrig: file mode must be "single" or "all"'
+    vim.notify(err, vim.log.levels.ERROR)
+    return nil, err
+  end
+  cfg.file_mode = mode
+  if session then
+    M.open_pair(session.index)
+  end
+  return mode
+end
+
 ---Session-derived query cache, computed ONCE per session: the URI of
 ---every commentable buffer (see M.pair_path — matching how
 ---adapter.identify keys records) and the project root the worktree
@@ -731,6 +770,7 @@ function M.stop()
     return false, "pjollrig: no active review session"
   end
   require("pjollrig.review.panel").close()
+  require("pjollrig.review.all").clear()
   local tab = session.tab
   local stage_dirs = session.stage_dirs
   -- Worktree buffers outlive the session tab, so the inline paint has to

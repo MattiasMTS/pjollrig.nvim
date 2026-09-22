@@ -200,7 +200,11 @@ function H.fake_cmux(ctx, opts)
     "      shift;",
     "    done;",
     '    if [ "$1" = "--" ]; then shift; fi;',
-    '    printf \'send\t%s\t%s\n\' "$surface" "$*" >> "$log";',
+    -- NOTE: log-append printf formats use a literal \n escape (backslash-n
+    -- in the script) — an embedded real newline would be written as NUL by
+    -- writefile() and truncate the format at exec time, leaving the log
+    -- without line separators.
+    '    printf \'send\t%s\t%s\\n\' "$surface" "$*" >> "$log";',
     "    ;;",
     "  set-buffer)",
     '    name="default";',
@@ -209,8 +213,30 @@ function H.fake_cmux(ctx, opts)
     '      if [ "$1" = "--" ]; then shift; break; fi;',
     "      shift;",
     "    done;",
+    -- Real cmux can acknowledge a set-buffer (exit 0) and still drop the
+    -- write server-side. drop_uploads simulates that: matching names exit
+    -- OK without persisting the buffer file.
+    '    case "$name" in',
+  })
+  for _, drop in ipairs(opts.drop_uploads or {}) do
+    if drop.mode == "once" then
+      table.insert(
+        lines,
+        "      "
+          .. drop.glob
+          .. ') if [ ! -f "$log.dropmark.$name" ]; then : > "$log.dropmark.$name"; printf \'set-buffer-dropped\t%s\\n\' "$name" >> "$log"; exit 0; fi ;;'
+      )
+    else
+      table.insert(
+        lines,
+        "      " .. drop.glob .. ') printf \'set-buffer-dropped\t%s\\n\' "$name" >> "$log"; exit 0 ;;'
+      )
+    end
+  end
+  vim.list_extend(lines, {
+    "    esac;",
     '    printf %s "$*" > "$log.buffer.$name";',
-    '    printf \'set-buffer\t%s\t%s\n\' "$name" "$*" >> "$log";',
+    '    printf \'set-buffer\t%s\t%s\\n\' "$name" "$*" >> "$log";',
     "    ;;",
     "  paste-buffer)",
     '    name="default"; surface="";',
@@ -219,10 +245,15 @@ function H.fake_cmux(ctx, opts)
     '      if [ "$1" = "--surface" ]; then shift; surface="$1"; shift; continue; fi;',
     "      shift;",
     "    done;",
-    '    printf \'paste-buffer\t%s\t%s\t%s\n\' "$surface" "$name" "$(cat "$log.buffer.$name" 2>/dev/null)" >> "$log";',
+    '    if [ ! -f "$log.buffer.$name" ]; then',
+    '      printf \'paste-missing\t%s\t%s\\n\' "$surface" "$name" >> "$log";',
+    "      printf 'Error: Buffer not found: %s\\n' \"$name\" >&2;",
+    "      exit 1;",
+    "    fi;",
+    '    printf \'paste-buffer\t%s\t%s\t%s\\n\' "$surface" "$name" "$(cat "$log.buffer.$name")" >> "$log";',
     "    ;;",
     "  send-key)",
-    '    printf \'key\t%s\t%s\n\' "$3" "$4" >> "$log";',
+    '    printf \'key\t%s\t%s\\n\' "$3" "$4" >> "$log";',
     "    ;;",
     "  *) exit 2 ;;",
     "esac",

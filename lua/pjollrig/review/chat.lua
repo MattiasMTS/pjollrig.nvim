@@ -43,7 +43,7 @@
 -- needed `"type":"…"` marker hits, and a user line is a boundary without
 -- decoding at all. The IO is synchronous but runs inside the resolver's
 -- own scheduled step (`resolve_async` below), after `:PjollrigReview` has
--- returned and the review shell is on screen; the `vim.ui.select` pickers
+-- returned and the review shell is on screen; the floating pickers
 -- continue that same chain, so the registry needs no extra machinery.
 
 local M = {}
@@ -424,15 +424,19 @@ local function job_for(session, turn)
   }
 end
 
----vim.ui.select with the resolver's cancel contract: dismissing the
+---Open a floating picker with the resolver's cancel contract: dismissing the
 ---picker fails the resolve (the shell closes with that message).
 local function pick(items, prompt, format_item, cb, on_choice)
-  vim.ui.select(items, { prompt = prompt, format_item = format_item, kind = "pjollrig-chat" }, function(choice)
-    if not choice then
-      return cb(nil, "pjollrig: chat review cancelled")
+  require("pjollrig.ui.select").select(
+    items,
+    { prompt = prompt, format_item = format_item, kind = "pjollrig-chat" },
+    function(choice)
+      if not choice then
+        return cb(nil, "pjollrig: chat review cancelled")
+      end
+      on_choice(choice)
     end
-    on_choice(choice)
-  end)
+  )
 end
 
 ---The resolve proper, on the main loop. Forms: `chat` (session picker,
@@ -490,7 +494,7 @@ end
 ---transcript scans, pickers, materialize — starts in one scheduled step
 ---so `:PjollrigReview` returns first and the review shell is already up
 ---when a picker opens; picker callbacks continue the chain from
----vim.ui.select's own callback.
+---the picker's own callback.
 ---@param fargs string[]
 ---@param opts {cwd?: string}
 ---@param cb fun(job: table|nil, err: string|nil)

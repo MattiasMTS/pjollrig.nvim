@@ -1,14 +1,12 @@
--- pjollrig.nvim: picker-agnostic UI glue.
+-- pjollrig.nvim: UI glue.
 --
 -- `M.prompt` now delegates to the floating editor at
 -- `lua/pjollrig/ui/editor.lua`. That gives
 -- multi-line markdown-flavoured editing with user-configurable submit /
 -- cancel keys instead of the single-line `vim.ui.input` we used in v0.
 --
--- `M.select_sink` auto-sends when there is a single sink and opens a
--- configurable picker when multiple sinks are registered. The default
--- picker is `vim.ui.select`, so dressing.nvim / snacks.nvim / fzf-lua /
--- telescope-ui-select continue to work out of the box.
+-- `M.select_sink` auto-sends with a single sink and otherwise uses the
+-- shared floating list. `ui.sink_picker` can override sink selection.
 
 local M = {}
 
@@ -96,7 +94,7 @@ function M.select_sink(cb)
     return
   end
 
-  vim.ui.select(choices, opts, finish)
+  require("pjollrig.ui.select").select(choices, opts, finish)
 end
 
 local cached_email

@@ -56,6 +56,73 @@ describe("pjollrig sink helpers", function()
     assert.is_nil(text:find("codediff:", 1, true))
   end)
 
+  describe("same_record", function()
+    local helpers = require("pjollrig.sinks.helpers")
+    local function snapshot()
+      return {
+        id = "r1",
+        body = "sent body",
+        uri = "file:///p/src/a.lua",
+        range = { start = { 4, 0 }, end_ = { 4, 0 } },
+        meta = { excerpt = "x" },
+        updated_at = 100,
+      }
+    end
+
+    it("ignores range drift and updated_at (positions follow extmarks, not edits)", function()
+      local current = snapshot()
+      current.range = { start = { 9, 0 }, end_ = { 10, 3 } }
+      current.updated_at = 200
+      assert.is_true(helpers.same_record(current, snapshot()))
+      current.range = nil
+      assert.is_true(helpers.same_record(current, snapshot()))
+    end)
+
+    it("ignores only the named delivery marker", function()
+      local current = snapshot()
+      current.meta.github_sent = 123
+      assert.is_true(helpers.same_record(current, snapshot(), "github_sent"))
+      assert.is_false(helpers.same_record(current, snapshot()))
+      local bare = snapshot()
+      bare.meta = nil
+      local marked = snapshot()
+      marked.meta = { github_sent = 1 }
+      assert.is_true(helpers.same_record(marked, bare, "github_sent"))
+    end)
+
+    it("still detects content edits made while a sink was busy", function()
+      for field, value in pairs({
+        body = "unsent correction",
+        uri = "file:///p/src/renamed.lua",
+        resolved = true,
+        meta = { excerpt = "changed" },
+      }) do
+        local current = snapshot()
+        current[field] = value
+        assert.is_false(helpers.same_record(current, snapshot()), field)
+      end
+      assert.is_false(helpers.same_record(nil, snapshot()))
+      assert.is_false(helpers.same_record(snapshot(), nil))
+    end)
+  end)
+
+  it("defaults clear_on_success to true for any registered sink, false opts out", function()
+    local sinks = require("pjollrig.sinks")
+    sinks._reset()
+    local noop = function(_c, _ctx, cb)
+      cb(true)
+    end
+    sinks.register({ name = "handoff", send = noop })
+    sinks.register({ name = "copy", send = noop, clear_on_success = false })
+    assert.is_true(sinks.get("handoff").clear_on_success)
+    assert.is_false(sinks.get("copy").clear_on_success)
+    assert.is_nil(require("pjollrig.sinks.clipboard").setup().clear_on_success)
+    sinks.register(require("pjollrig.sinks.clipboard").setup())
+    assert.is_true(sinks.get("clipboard").clear_on_success)
+    assert.is_true(require("pjollrig.sinks.socket").setup({}).clear_on_success)
+    assert.is_false(require("pjollrig.sinks.socket").setup({ clear_on_success = false }).clear_on_success)
+  end)
+
   it("registers builtin integrations from sink config", function()
     require("pjollrig.sinks")._reset()
     local bin = H.fake_cmux(ctx)
@@ -82,11 +149,102 @@ describe("pjollrig sink helpers", function()
     assert.is_truthy(require("pjollrig.sinks").get("socket"))
     assert.are.equal("sink", require("pjollrig.sinks").get("clipboard").type)
     assert.are.equal("integration", require("pjollrig.sinks").get("cmux").type)
-    assert.is_false(require("pjollrig.sinks").get("cmux").clear_on_success)
+    assert.is_true(require("pjollrig.sinks").get("cmux").clear_on_success)
     assert.are.equal("clipboard header", require("pjollrig.sinks").get("clipboard").pre_text)
     assert.are.equal("clipboard footer", require("pjollrig.sinks").get("clipboard").post_text)
     assert.are.equal("cmux header", require("pjollrig.sinks").get("cmux").pre_text)
     assert.are.equal("cmux footer", require("pjollrig.sinks").get("cmux").post_text)
+  end)
+
+  describe("clipboard sink clearing", function()
+    local pj, sinks, old_has, old_setreg, old_getreg, reg
+
+    local function stub_clipboard(available)
+      old_has, old_setreg, old_getreg = vim.fn.has, vim.fn.setreg, vim.fn.getreg
+      reg = nil
+      vim.fn.has = function(feature)
+        if feature == "clipboard" then
+          return available and 1 or 0
+        end
+        return old_has(feature)
+      end
+      vim.fn.setreg = function(name, value)
+        if name == "+" and available then
+          reg = value
+        end
+        return 0
+      end
+      vim.fn.getreg = function(name, ...)
+        if name == "+" then
+          return reg or ""
+        end
+        return old_getreg(name, ...)
+      end
+    end
+
+    before_each(function()
+      pj = require("pjollrig")
+      sinks = require("pjollrig.sinks")
+      H.edit_project_file(ctx, "src/clip.lua", { "return true" })
+      pj.add({ body = "copy me" })
+      assert.are.equal(1, #pj.list())
+    end)
+
+    after_each(function()
+      vim.fn.has, vim.fn.setreg, vim.fn.getreg = old_has, old_setreg, old_getreg
+    end)
+
+    it("forwards clear_on_success = false as the opt-out", function()
+      stub_clipboard(true)
+      sinks.register(require("pjollrig.sinks.clipboard").setup({ clear_on_success = false }))
+      pj.send("clipboard")
+      assert.is_truthy(reg and reg:find("copy me", 1, true))
+      assert.are.equal(1, #pj.list())
+    end)
+
+    it("clears comments after a verified copy by default", function()
+      stub_clipboard(true)
+      sinks.register(require("pjollrig.sinks.clipboard").setup())
+      pj.send("clipboard")
+      assert.is_truthy(reg and reg:find("copy me", 1, true))
+      assert.are.equal(0, #pj.list())
+    end)
+
+    it("refuses to send without a clipboard provider and keeps comments", function()
+      stub_clipboard(false)
+      sinks.register(require("pjollrig.sinks.clipboard").setup())
+      local errors = {}
+      local old_notify = vim.notify
+      vim.notify = function(msg, level)
+        if level == vim.log.levels.ERROR then
+          table.insert(errors, msg)
+        end
+      end
+      pj.send("clipboard")
+      vim.notify = old_notify
+      assert.are.equal(1, #pj.list())
+      assert.are.equal(1, #errors)
+      assert.is_truthy(errors[1]:find("no clipboard provider", 1, true))
+    end)
+
+    it("keeps comments when the copy cannot be read back", function()
+      stub_clipboard(true)
+      vim.fn.setreg = function()
+        return 0
+      end
+      sinks.register(require("pjollrig.sinks.clipboard").setup())
+      local errors = {}
+      local old_notify = vim.notify
+      vim.notify = function(msg, level)
+        if level == vim.log.levels.ERROR then
+          table.insert(errors, msg)
+        end
+      end
+      pj.send("clipboard")
+      vim.notify = old_notify
+      assert.are.equal(1, #pj.list())
+      assert.is_truthy(errors[1] and errors[1]:find("could not be verified", 1, true))
+    end)
   end)
 
   it("wraps clipboard sink output with configured pre and post text", function()
@@ -146,7 +304,7 @@ describe("pjollrig sink helpers", function()
       sent = { ok = ok, err = err }
     end)
     -- The send path is asynchronous (vim.system callbacks); wait for the cb.
-    vim.wait(2000, function()
+    vim.wait(10000, function()
       return sent ~= nil
     end)
 
@@ -195,7 +353,7 @@ describe("pjollrig sink helpers", function()
       sent = { ok = ok, err = err }
     end)
     -- The send path is asynchronous (vim.system callbacks); wait for the cb.
-    vim.wait(2000, function()
+    vim.wait(10000, function()
       return sent ~= nil
     end)
 
@@ -236,8 +394,7 @@ describe("pjollrig sink helpers", function()
     assert.is_true(set_count > 1, "expected more than one chunk, got " .. tostring(set_count))
     assert.are.equal(set_count, paste_count)
 
-    -- Pastes are strictly ordered by chunk index even though the
-    -- set-buffer uploads may complete in any order.
+    -- Pastes are strictly ordered by chunk index.
     local paste_order = {}
     for idx in raw_log:gmatch("paste%-buffer\tsurface:2\tpjollrig%-%d+%-(%d+)\t") do
       table.insert(paste_order, tonumber(idx))
@@ -270,6 +427,279 @@ describe("pjollrig sink helpers", function()
 
     -- Exactly one Enter keypress at the end (auto_submit default).
     assert.are.equal(1, count_occurrences(raw_log, "key\tsurface:2\tenter"))
+  end)
+
+  it("keeps only one cmux upload or paste in flight for a large review", function()
+    local helpers = require("pjollrig.sinks.helpers")
+    local original = helpers.system_async
+    local pending, calls, completed = {}, {}, false
+    helpers.system_async = function(argv, _, cb)
+      table.insert(calls, argv[2])
+      table.insert(pending, cb)
+    end
+    local ok, err = pcall(function()
+      require("pjollrig.sinks.cmux")
+        .setup({
+          paste_chunk_bytes = 128,
+          paste_chunk_delay_ms = 0,
+          auto_submit = false,
+        })
+        .send({ { uri = "file:///a.lua", body = string.rep("review\n", 100) } }, { surface = "surface:2" }, function(success)
+          assert.is_true(success)
+          completed = true
+        end)
+      while not completed do
+        assert.are.equal(1, #pending, "multiple cmux processes were started together")
+        local cb = table.remove(pending, 1)
+        cb({ code = 0, stdout = "", stderr = "" })
+      end
+      assert.is_true(#calls > 2)
+      for i, command in ipairs(calls) do
+        assert.are.equal(i % 2 == 1 and "set-buffer" or "paste-buffer", command)
+      end
+    end)
+    helpers.system_async = original
+    assert.is_true(ok, err)
+  end)
+
+  it("recovers when cmux silently drops a chunk upload", function()
+    -- Real cmux can ack a set-buffer (exit 0) yet drop the write server-side
+    -- under concurrent uploads; the paste then fails "Buffer not found". The
+    -- sink must re-upload the chunk and retry instead of aborting.
+    local bin, log = H.fake_cmux(ctx, {
+      drop_uploads = { { glob = "*-1", mode = "once" } },
+    })
+
+    local lines = {}
+    for i = 1, 60 do
+      table.insert(lines, ("M%d some-file.lua:%d: this is review comment number %d"):format(i, i, i))
+    end
+    local record = {
+      body = table.concat(lines, "\n"),
+      project_root = ctx.root,
+      range = { start = { 0, 0 }, end_ = { 0, 0 } },
+      uri = "file://" .. ctx.root .. "/big.lua",
+    }
+
+    local sink = require("pjollrig.sinks.cmux").setup({
+      command = bin,
+      workspace_id = "workspace-1",
+      cache = false,
+      agent_state_dir = ctx.state,
+      paste_chunk_bytes = 1024,
+      paste_chunk_delay_ms = 0,
+      submit_delay_ms = 0,
+    })
+
+    local sent
+    sink.send({ record }, { surface = "surface:2" }, function(ok, err)
+      sent = { ok = ok, err = err }
+    end)
+    vim.wait(10000, function()
+      return sent ~= nil
+    end)
+
+    assert.is_truthy(sent)
+    assert.is_nil(sent.err)
+    assert.is_true(sent.ok)
+
+    local raw_log = table.concat(vim.fn.readfile(log), "\n")
+    -- The first upload of chunk 1 was dropped and its paste failed once.
+    assert.is_truthy(raw_log:find("set%-buffer%-dropped\tpjollrig%-%d+%-1\n"))
+    assert.is_truthy(raw_log:find("paste%-missing\tsurface:2\tpjollrig%-%d+%-1"))
+    -- Successful pastes still land strictly in chunk order.
+    local paste_order = {}
+    for idx in raw_log:gmatch("paste%-buffer\tsurface:2\tpjollrig%-%d+%-(%d+)\t") do
+      table.insert(paste_order, tonumber(idx))
+    end
+    assert.is_true(#paste_order > 1)
+    for i, idx in ipairs(paste_order) do
+      assert.are.equal(i, idx)
+    end
+    -- Reassembled buffer files are byte-exact despite the retry.
+    local expected = require("pjollrig.sinks.helpers").format_markdown_review({ record }, {})
+    local buffer_files = vim.fn.glob(log .. ".buffer.*", false, true)
+    table.sort(buffer_files, function(a, b)
+      return (tonumber(a:match("%-(%d+)$")) or 0) < (tonumber(b:match("%-(%d+)$")) or 0)
+    end)
+    local reassembled = {}
+    for _, file in ipairs(buffer_files) do
+      local fh = assert(io.open(file, "rb"))
+      table.insert(reassembled, fh:read("*a") or "")
+      fh:close()
+    end
+    assert.are.equal(expected, table.concat(reassembled))
+  end)
+
+  it("reports an untouched pane when no chunk ever lands", function()
+    -- Chunk 1's upload is dropped on every attempt: retries exhaust with
+    -- nothing pasted, and the error must say the pane is untouched (a plain
+    -- retry is safe) instead of claiming a truncated review.
+    local bin, log = H.fake_cmux(ctx, {
+      drop_uploads = { { glob = "*-1", mode = "always" } },
+    })
+
+    local lines = {}
+    for i = 1, 60 do
+      table.insert(lines, ("M%d some-file.lua:%d: this is review comment number %d"):format(i, i, i))
+    end
+    local record = {
+      body = table.concat(lines, "\n"),
+      project_root = ctx.root,
+      range = { start = { 0, 0 }, end_ = { 0, 0 } },
+      uri = "file://" .. ctx.root .. "/big.lua",
+    }
+
+    local sink = require("pjollrig.sinks.cmux").setup({
+      command = bin,
+      workspace_id = "workspace-1",
+      cache = false,
+      agent_state_dir = ctx.state,
+      paste_chunk_bytes = 1024,
+      paste_chunk_delay_ms = 0,
+      submit_delay_ms = 0,
+    })
+
+    local sent
+    sink.send({ record }, { surface = "surface:2" }, function(ok, err)
+      sent = { ok = ok, err = err }
+    end)
+    vim.wait(10000, function()
+      return sent ~= nil
+    end)
+
+    assert.is_truthy(sent)
+    assert.is_false(sent.ok)
+    assert.is_truthy(sent.err:find("untouched", 1, true))
+    assert.is_nil(sent.err:find("truncated", 1, true))
+
+    -- The upload was retried before giving up (multiple drop log lines).
+    local raw_log = table.concat(vim.fn.readfile(log), "\n")
+    local drops = 0
+    for _ in raw_log:gmatch("set%-buffer%-dropped\tpjollrig%-%d+%-1\n") do
+      drops = drops + 1
+    end
+    assert.is_true(drops > 1, "expected retried uploads, got " .. tostring(drops) .. " drop(s)")
+    -- Nothing was ever pasted.
+    assert.is_nil(raw_log:find("paste%-buffer\tsurface:2\t"))
+  end)
+
+  it("reports a truncated pane when a later chunk exhausts retries", function()
+    local bin, log = H.fake_cmux(ctx, {
+      drop_uploads = { { glob = "*-2", mode = "always" } },
+    })
+
+    local lines = {}
+    for i = 1, 60 do
+      table.insert(lines, ("M%d some-file.lua:%d: this is review comment number %d"):format(i, i, i))
+    end
+    local record = {
+      body = table.concat(lines, "\n"),
+      project_root = ctx.root,
+      range = { start = { 0, 0 }, end_ = { 0, 0 } },
+      uri = "file://" .. ctx.root .. "/big.lua",
+    }
+
+    local sink = require("pjollrig.sinks.cmux").setup({
+      command = bin,
+      workspace_id = "workspace-1",
+      cache = false,
+      agent_state_dir = ctx.state,
+      paste_chunk_bytes = 1024,
+      paste_chunk_delay_ms = 0,
+      submit_delay_ms = 0,
+    })
+
+    local sent
+    sink.send({ record }, { surface = "surface:2" }, function(ok, err)
+      sent = { ok = ok, err = err }
+    end)
+    vim.wait(10000, function()
+      return sent ~= nil
+    end)
+
+    assert.is_truthy(sent)
+    assert.is_false(sent.ok)
+    assert.is_truthy(sent.err:find("after 1/", 1, true))
+    assert.is_truthy(sent.err:find("truncated", 1, true))
+
+    -- Chunk 2's upload was retried before giving up.
+    local raw_log = table.concat(vim.fn.readfile(log), "\n")
+    local drops = 0
+    for _ in raw_log:gmatch("set%-buffer%-dropped\tpjollrig%-%d+%-2\n") do
+      drops = drops + 1
+    end
+    assert.is_true(drops > 1, "expected retried uploads, got " .. tostring(drops) .. " drop(s)")
+  end)
+
+  it("finds the agent in the session that spawned this worktree", function()
+    -- A review opened in a linked worktree: this cmux workspace holds the
+    -- editor, the agent sits in the workspace the worktree was created from.
+    -- worktrunk's post-start hook leaves the owner's id at
+    -- <git-common-dir>/wt/cmux/<branch>, and the sink must hop to it rather
+    -- than reporting "no cmux agent surfaces found".
+    local root, git = H.git_repo(ctx, { ["a.txt"] = { "one" } })
+    local worktree = root .. "-wt"
+    git("worktree", "add", "-q", "-b", "ms/feature", worktree)
+
+    local common = vim.trim(vim
+      .system({
+        "git",
+        "-C",
+        worktree,
+        "rev-parse",
+        "--path-format=absolute",
+        "--git-common-dir",
+      }, { text = true })
+      :wait().stdout)
+    vim.fn.mkdir(common .. "/wt/cmux", "p")
+    vim.fn.writefile({ "owner-workspace" }, common .. "/wt/cmux/ms-feature")
+
+    -- Workspace-aware fake: the worktree's workspace holds only an editor,
+    -- so a sink that never hops finds no agent and the test fails.
+    local bin = ctx.state .. "/fake-cmux-ws"
+    vim.fn.writefile({
+      "#!/usr/bin/env sh",
+      'ws=""',
+      'case "$1" in',
+      "  tree)",
+      '    while [ "$#" -gt 0 ]; do',
+      '      [ "$1" = "--workspace" ] && { shift; ws="$1"; }',
+      "      shift || break",
+      "    done",
+      '    if [ "$ws" = "owner-workspace" ]; then',
+      "      printf '%s\\n' 'surface:2 [terminal] \"claude\" tty=ttys002'",
+      "    else",
+      "      printf '%s\\n' 'surface:1 [terminal] \"nvim\" tty=ttys001 here'",
+      "    fi",
+      "    ;;",
+      "  rpc)",
+      '    case "$3" in',
+      "      *owner-workspace*)",
+      [[        printf '%s' '{"surfaces":[{"id":"s-agent","ref":"surface:2","title":"claude"}]}' ;;]],
+      "      *)",
+      [[        printf '%s' '{"surfaces":[{"id":"s-editor","ref":"surface:1","title":"nvim"}]}' ;;]],
+      "    esac",
+      "    ;;",
+      "  *) printf '' ;;",
+      "esac",
+    }, bin)
+    vim.fn.setfperm(bin, "rwx------")
+
+    local cwd = vim.fn.getcwd()
+    vim.cmd.edit(vim.fn.fnameescape(worktree .. "/a.txt"))
+    local surfaces, err = require("pjollrig.sinks.cmux").list_agent_surfaces({
+      command = bin,
+      workspace_id = "worktree-workspace",
+      cache = false,
+      process_fallback = false,
+      screen_fallback = false,
+    })
+    vim.cmd.edit(vim.fn.fnameescape(cwd))
+
+    assert.is_truthy(surfaces, tostring(err))
+    assert.is_true(#surfaces > 0, "expected to hop to the owner workspace's agent: " .. tostring(err))
+    assert.are.equal("surface:2", surfaces[1].ref or surfaces[1].id)
   end)
 
   it("keeps enabled cmux disabled when unavailable", function()

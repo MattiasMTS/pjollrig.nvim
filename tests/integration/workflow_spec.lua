@@ -50,7 +50,7 @@ describe("pjollrig headless workflow", function()
 
   it("adds, lists, sends, and keeps comments when the sink is non-consuming", function()
     local events, stop_capture = H.capture_events({ "PjollrigAdded", "PjollrigSent" })
-    local calls = H.register_fake_sink("fake")
+    local calls = H.register_fake_sink("fake", { clear_on_success = false })
 
     require("pjollrig").add({
       body = "review this line",
@@ -133,6 +133,94 @@ describe("pjollrig headless workflow", function()
     assert.are.equal("PjollrigDeleted", events[3].pattern)
 
     stop_capture()
+  end)
+
+  -- Real consuming sinks (cmux, wezterm, github) ack asynchronously: a
+  -- surface picker, a network round-trip, `submit_delay_ms`. Whatever the
+  -- buffer does in that window must not decide whether delivered records
+  -- get cleared — only edits to the comment itself may.
+  describe("clear_on_success with an asynchronous sink", function()
+    local function register_async_sink()
+      local pending
+      require("pjollrig").register_sink({
+        name = "async-consume",
+        clear_on_success = true,
+        send = function(_comments, _ctx, cb)
+          pending = cb
+        end,
+      })
+      return function()
+        assert.are.equal("function", type(pending), "sink was never dispatched")
+        pending(true)
+      end
+    end
+
+    it("clears a delivered record whose range drifted before the ack", function()
+      local pj = require("pjollrig")
+      local store = require("pjollrig.store")
+      local ack = register_async_sink()
+      pj.add({ body = "delivered" })
+      assert.is_true(store.save(ctx.root))
+      local id = pj.list()[1].id
+
+      pj.send("async-consume")
+      -- The agent edits the commented file as soon as it receives the
+      -- review; the anchor extmark moves and the next list() syncs the
+      -- moved position back into the record before the sink acks.
+      vim.api.nvim_buf_set_lines(0, 0, 0, false, { "-- agent inserted a line", "-- and another" })
+      assert.are.equal(2, pj.list()[1].range.start[1])
+      assert.is_true(store.save(ctx.root))
+      ack()
+
+      assert.are.equal(0, #pj.list(), "range drift must not keep a delivered record alive")
+      assert.is_nil(store.get(ctx.root, id))
+    end)
+
+    it("clears a delivered record when the store was flushed before the ack", function()
+      local pj = require("pjollrig")
+      local store = require("pjollrig.store")
+      local ack = register_async_sink()
+      pj.add({ body = "delivered" })
+      pj.send("async-consume")
+      -- BufWritePost flush: the cache is re-read from SQLite, so the live
+      -- record is a different table from the dispatched one.
+      vim.cmd("silent write")
+      assert.is_truthy(store.get(ctx.root, pj.list()[1].id))
+      ack()
+      assert.are.equal(0, #pj.list())
+    end)
+
+    it("clears only marker-stamped records after drift for a sent_marker sink", function()
+      local pj = require("pjollrig")
+      local store = require("pjollrig.store")
+      local pending
+      pj.register_sink({
+        name = "partial-consume",
+        clear_on_success = true,
+        sent_marker = "fake_sent",
+        send = function(comments, _ctx, cb)
+          -- Deliver the first record only, stamping the dispatched table
+          -- the way github's mark_sent does.
+          comments[1].meta = comments[1].meta or {}
+          comments[1].meta.fake_sent = os.time()
+          pending = cb
+        end,
+      })
+      pj.add({ body = "delivered" })
+      vim.cmd("normal! j")
+      pj.add({ body = "undelivered" })
+      assert.is_true(store.save(ctx.root))
+
+      pj.send("partial-consume")
+      vim.api.nvim_buf_set_lines(0, 0, 0, false, { "-- agent inserted a line" })
+      pj.list()
+      assert.is_true(store.save(ctx.root))
+      pending(true)
+
+      local live = pj.list()
+      assert.are.equal(1, #live)
+      assert.are.equal("undelivered", live[1].body)
+    end)
   end)
 
   it("can drive add and edit through the command path", function()
@@ -637,6 +725,32 @@ describe("pjollrig headless workflow", function()
     -- not two (reconcile + viewport each re-identifying and re-reading
     -- the store).
     assert.are.equal(3, identify_calls)
+  end)
+
+  it("retains unsent edits when an asynchronous consuming sink completes", function()
+    local pjollrig = require("pjollrig")
+    local store = require("pjollrig.store")
+    pjollrig.add({ body = "sent body" })
+    pjollrig.add({ body = "unchanged body" })
+    local records = pjollrig.list()
+    local edited = records[1]
+    local finish
+    pjollrig.register_sink({
+      name = "delayed-consume",
+      clear_on_success = true,
+      send = function(_, _, cb)
+        finish = cb
+      end,
+    })
+    pjollrig.send("delayed-consume")
+    edited.body = "unsent correction"
+    store.mark_dirty(ctx.root)
+    assert.is_true(store.save(ctx.root))
+    finish(true)
+    local remaining = pjollrig.list()
+    assert.are.equal(1, #remaining)
+    assert.are.equal(edited.id, remaining[1].id)
+    assert.are.equal("unsent correction", remaining[1].body)
   end)
 
   it("repaints buffers once per consuming send, not once per cleared record", function()

@@ -1,4 +1,4 @@
--- pjollrig.nvim: vim.ui.select picker for the edit / delete / resolve
+-- pjollrig.nvim: floating picker for the edit / delete / resolve
 -- commands.
 --
 -- The picker renders records in the same order as `:PjollrigList` (see
@@ -22,7 +22,7 @@ local COLUMN_SEPARATOR = " │ "
 local RESOLVED_PREFIX = "[✓] "
 
 ---Strip control characters and collapse whitespace so a single body line
----is safe to render in `vim.ui.select` (which forbids newlines).
+---is safe to render in a single picker row.
 ---@param s string
 ---@return string
 local function sanitize(s)
@@ -202,7 +202,7 @@ local function format_items(records)
   return out
 end
 
----Open `vim.ui.select` for `records` and invoke
+---Open the floating picker for `records` and invoke
 ---`require("pjollrig")[action](chosen.id)` on the picked record. No-op
 ---with an INFO notification when there are no records.
 ---@param action "edit"|"delete"|"resolve"
@@ -217,7 +217,7 @@ function M.pick(action, records)
   for i, r in ipairs(records) do
     items[i] = { record = r, display = formatted[i] }
   end
-  vim.ui.select(items, {
+  require("pjollrig.ui.select").select(items, {
     prompt = ("Pjollrig: %s comment"):format(action),
     format_item = function(item)
       return item.display

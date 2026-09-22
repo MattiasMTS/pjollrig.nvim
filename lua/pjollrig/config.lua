@@ -12,6 +12,8 @@ local M = {}
 ---@field cancel_keys string[] Keys that cancel the editor
 
 ---@class pjollrig.UIConfig
+---@field enable_mouse boolean Set Neovim mouse=a at setup; false leaves the existing setting untouched
+---@field mouse_comments boolean Gutter click and code double-click commenting in normal mode
 ---@field editor pjollrig.UIEditorConfig Floating comment editor options
 ---@field opacity number Floating-window transparency (0.0 = opaque, 1.0 = fully transparent)
 ---@field always_show_popups boolean Always render comment popups vs only when the line is in the viewport
@@ -37,12 +39,14 @@ local M = {}
 
 ---@class pjollrig.ReviewConfig
 ---@field diff_mode "split"|"unified" Diff rendering for `:PjollrigReview`. "split" opens a side-by-side `:diffsplit` pair; "unified" paints the diff inline on the worktree buffer.
+---@field file_mode "single"|"all" Single-file diffs or a continuous unified review (default single).
 ---@field fold_unchanged boolean Collapse unchanged regions into folds (default false; split mode gets nofoldenable when off).
 ---@field context integer Unified mode only: lines of context kept around each hunk (and the fold's minimum size).
 ---@field panel pjollrig.ReviewPanelConfig Review panel placement.
 
 ---@class pjollrig.SinksConfig
----@field clipboard boolean|table Enable the bundled clipboard sink (default true).
+---@field clipboard boolean|table Enable the bundled clipboard sink (default true). Accepts `pre_text`, `post_text`, and `clear_on_success` (default true; false keeps comments after a copy).
+---@field wezterm boolean|table Enable WezTerm when its CLI and current pane are available. Accepts auto_submit (default false), submit_delay_ms, pre_text, post_text, and clear_on_success (default true; false keeps comments after a send).
 ---@field cmux boolean|table Enable the bundled cmux integration (defaults to `{ enabled = true }`). Built-in text sinks accept optional `pre_text` and `post_text` strings. cmux also accepts `auto_submit` and `submit_delay_ms`.
 ---@field github boolean|table Enable the bundled GitHub PR review sink (default true; registers only when `gh` is executable). Accepts `event` ("COMMENT"|"REQUEST_CHANGES"|"APPROVE"), `clear_on_success`, and `pre_text`.
 ---@field socket boolean|table Enable the bundled socket sink (default true). Accepts `ack_timeout_ms`.
@@ -90,6 +94,7 @@ local defaults = {
     --             cost is that removed lines are not commentable
     --             (same as the read-only baseline side in split mode).
     diff_mode = "split",
+    file_mode = "single",
     -- Collapse unchanged code into folds while reviewing. Off by default:
     -- the full file stays visible; opt in for a hunks-only view. In split
     -- mode `false` disables the native diff folds in both windows.
@@ -120,6 +125,8 @@ local defaults = {
   },
   -- Floating editor + popup UI options.
   ui = {
+    enable_mouse = true,
+    mouse_comments = true,
     -- The floating comment editor: size, the mode it opens in, and the
     -- submit/cancel keys.
     editor = {
@@ -244,10 +251,15 @@ function M.setup(opts)
     -- options; allow both forms.
     vim.validate("sinks.clipboard", opts.sinks.clipboard, { "boolean", "table" }, true)
     vim.validate("sinks.cmux", opts.sinks.cmux, { "boolean", "table" }, true)
+    vim.validate("sinks.wezterm", opts.sinks.wezterm, { "boolean", "table" }, true)
     vim.validate("sinks.github", opts.sinks.github, { "boolean", "table" }, true)
     vim.validate("sinks.socket", opts.sinks.socket, { "boolean", "table" }, true)
   end
   if opts.review then
+    vim.validate("review.file_mode", opts.review.file_mode, "string", true)
+    if opts.review.file_mode ~= nil and opts.review.file_mode ~= "single" and opts.review.file_mode ~= "all" then
+      error('pjollrig: review.file_mode must be "single" or "all"')
+    end
     vim.validate("review.diff_mode", opts.review.diff_mode, "string", true)
     vim.validate("review.fold_unchanged", opts.review.fold_unchanged, "boolean", true)
     vim.validate("review.context", opts.review.context, "number", true)
@@ -289,6 +301,8 @@ function M.setup(opts)
     end
   end
   if opts.ui then
+    vim.validate("ui.enable_mouse", opts.ui.enable_mouse, "boolean", true)
+    vim.validate("ui.mouse_comments", opts.ui.mouse_comments, "boolean", true)
     vim.validate("ui.editor", opts.ui.editor, "table", true)
     if opts.ui.editor then
       vim.validate("ui.editor.width", opts.ui.editor.width, "number", true)

@@ -130,6 +130,10 @@ end
 ---@param bufnr integer
 ---@return string?
 local function project_root_for_bufnr(bufnr)
+  local all = package.loaded["pjollrig.review.all"]
+  if all and all.is_active(bufnr) then
+    return all.root(bufnr)
+  end
   local adapter = require("pjollrig.adapter")
   if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
     local identity = adapter.identify(bufnr)
@@ -415,20 +419,27 @@ function refresh_viewport(bufnr)
   if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
     return
   end
+  local render = require("pjollrig.ui.render")
+  local mode = render.display_mode()
+  -- Mode changes and show() reconcile visuals themselves. Cursor/scroll
+  -- events need no identity lookup or store read when popups cannot appear.
+  if not render.is_visible() or mode == "hidden" or mode == "inline" then
+    return
+  end
   local cfg = require("pjollrig.config").get()
   -- Sticky suppresses the viewport pass only for float-style popups
   -- (reconcile already scheduled them all). The "eol" display mode
   -- drives its cursor-line popup expansion through this pass, so it
   -- keeps receiving CursorMoved-fed updates regardless of
   -- `ui.always_show_popups`.
-  if (cfg.ui or {}).always_show_popups and require("pjollrig.ui.render").display_mode() ~= "eol" then
+  if (cfg.ui or {}).always_show_popups and mode ~= "eol" then
     return
   end
   -- Single-pass: one identify + one store read derives both result sets,
   -- instead of resolving the per-buffer records and the counter set
   -- separately (each re-resolving identity and re-querying the store).
   local records, counter_records = render_inputs(bufnr)
-  require("pjollrig.ui.render").update_viewport_popups(bufnr, records, counter_records)
+  render.update_viewport_popups(bufnr, records, counter_records)
 end
 
 ---Copy live extmark positions back into their records. Extmarks are the
@@ -670,6 +681,7 @@ function M.setup(opts)
 
   -- Initialize the render layer (highlights).
   require("pjollrig.ui.render").setup()
+  require("pjollrig.ui.mouse").setup()
 
   -- Idempotent augroup: clear = true means a second setup() wins cleanly.
   local group = vim.api.nvim_create_augroup("pjollrig", { clear = true })
@@ -955,13 +967,30 @@ function M.add(opts)
   opts = opts or {}
   local bufnr = vim.api.nvim_get_current_buf()
   local range = resolve_range(opts)
+  local all = package.loaded["pjollrig.review.all"]
+  local valid
+  if all and all.is_active(bufnr) then
+    local target, err = all.comment_target(bufnr, range)
+    if not target then
+      vim.notify("pjollrig: " .. err, vim.log.levels.WARN)
+      return
+    end
+    bufnr, range, valid = target.buf, target.range, target.valid
+  end
+  local function submit(body)
+    if valid and not valid() then
+      vim.notify("pjollrig: source or review changed; refresh and add the comment again", vim.log.levels.WARN)
+      return
+    end
+    finalize_add(body, bufnr, range)
+  end
   if opts.body and opts.body ~= "" then
-    finalize_add(opts.body, bufnr, range)
+    submit(opts.body)
     return
   end
   require("pjollrig.ui").prompt({ prompt = "Comment: " }, function(body)
     if body and body ~= "" then
-      finalize_add(body, bufnr, range)
+      submit(body)
     end
   end)
 end
@@ -1055,6 +1084,10 @@ function M.jump(direction, opts)
   end
 
   local bufnr = vim.api.nvim_get_current_buf()
+  local all = package.loaded["pjollrig.review.all"]
+  if all and all.is_active(bufnr) then
+    return all.jump_comment(forward, normalized_count(opts.count))
+  end
   attach_buffer(bufnr)
 
   local records = records_for_buffer(bufnr)
@@ -1508,6 +1541,8 @@ function M.send(sink_name, filter, ctx, opts)
   -- (sink will be nil here, `sink.clear_on_success` never evaluates).
   local sinks = require("pjollrig.sinks")
   local sink = sinks.get(sink_name)
+  -- Async delivery must not consume edits made while the sink was busy.
+  local sent_records = sink and sink.clear_on_success and vim.deepcopy(records) or nil
   sinks.dispatch(sink_name, records, ctx or {}, function(ok, err)
     -- Fire `PjollrigSent` BEFORE any auto-clear so subscribers see the
     -- send event ahead of the per-record `PjollrigDeleted` events — a
@@ -1546,12 +1581,14 @@ function M.send(sink_name, filter, ctx, opts)
       -- editor-wide repaint runs ONCE after the loop instead of once
       -- per cleared record.
       local cleared = false
-      for _, record in ipairs(records) do
+      for index, record in ipairs(records) do
         local delivered = marker == nil or (type(record.meta) == "table" and record.meta[marker] ~= nil)
-        if delivered then
-          local deleted = M.delete(record.id, {
-            scope = record.scope,
-            project_root = record.project_root,
+        local snapshot = sent_records[index]
+        local current = delivered and find(snapshot.id, snapshot) or nil
+        if delivered and require("pjollrig.sinks.helpers").same_record(current, snapshot, marker) then
+          local deleted = M.delete(snapshot.id, {
+            scope = snapshot.scope,
+            project_root = snapshot.project_root,
             quiet = true,
             no_refresh = true,
           })

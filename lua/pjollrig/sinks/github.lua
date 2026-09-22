@@ -21,9 +21,7 @@ local function defaults()
   return {
     command = "gh",
     event = "COMMENT",
-    -- Posting a review to GitHub is a copy, not a hand-off: keep the
-    -- local records unless the user explicitly opts in to clearing.
-    clear_on_success = false,
+    clear_on_success = true, -- false keeps local copies after posting
     pre_text = nil,
   }
 end
@@ -188,29 +186,47 @@ local function build_review(comments, opts, event)
 end
 
 ---Mark each record as posted (`meta.github_sent = os.time()`) and
----persist through the owning store — the same put+save path record
----mutations like review resolve use. Ad-hoc tables without a store home
----(no id / no root) still get the in-memory marker. Marking happens
+---persist only still-matching live versions through their owning store.
+---Ad-hoc tables without a store home (no id / no root) still get the
+---in-memory marker. Marking happens
 ---per posted unit, so a partial failure retries only the remainder.
-local function mark_sent(records)
+local function mark_sent(records, snapshots)
   local store = require("pjollrig.store")
   local roots = {}
   local session = false
   local now = os.time()
+  local function stamp(record)
+    record.meta = type(record.meta) == "table" and record.meta or {}
+    record.meta.github_sent = now
+  end
   for _, record in ipairs(records) do
-    if type(record) == "table" then
-      if type(record.meta) ~= "table" then
-        record.meta = {}
-      end
-      record.meta.github_sent = now
-      if record.id ~= nil then
-        if record.scope == "session" then
-          store.session_put(record)
-          session = true
-        elseif type(record.project_root) == "string" and record.project_root ~= "" then
-          store.put(record.project_root, record)
-          roots[record.project_root] = true
+    local snapshot = snapshots[record]
+    local current
+    if snapshot.id ~= nil then
+      if snapshot.scope == "session" then
+        for _, candidate in ipairs(store.session_all()) do
+          if candidate.id == snapshot.id then
+            current = candidate
+            break
+          end
         end
+      elseif type(snapshot.project_root) == "string" and snapshot.project_root ~= "" then
+        current = store.get(snapshot.project_root, snapshot.id)
+      end
+    end
+    -- The dispatched table may alias a live record or be stale after a
+    -- cache refresh. Only mark versions that still match what was posted.
+    if helpers.same_record(record, snapshot, "github_sent") then
+      stamp(record)
+    end
+    if helpers.same_record(current, snapshot, "github_sent") then
+      stamp(current)
+      if snapshot.scope == "session" then
+        store.session_mark_dirty()
+        session = true
+      else
+        store.mark_dirty(snapshot.project_root)
+        roots[snapshot.project_root] = true
       end
     end
   end
@@ -288,7 +304,7 @@ function M.setup(opts)
     type = "integration",
     label = "GitHub PR review",
     description = "post comments as a pull-request review via gh",
-    clear_on_success = opts.clear_on_success == true,
+    clear_on_success = opts.clear_on_success,
     -- Delivery contract with core's `clear_on_success` handling: this
     -- sink stamps `meta.github_sent` (via `mark_sent`) on exactly the
     -- records it delivered, so on success core clears ONLY records
@@ -339,6 +355,10 @@ function M.setup(opts)
         event = ctx.event
       end
       local cwd = resolve_cwd(ctx, comments)
+      local snapshots = {}
+      for _, comment in ipairs(comments) do
+        snapshots[comment] = vim.deepcopy(comment)
+      end
       local review, skipped, skipped_imported, replies, review_records, already_sent =
         build_review(comments, opts, event)
       -- Skipped records are withheld from GitHub but stay local (the
@@ -410,7 +430,7 @@ function M.setup(opts)
         end
         post_reply(opts, repo, pr, reply, cwd, function(ok, err)
           if ok then
-            mark_sent({ reply.record })
+            mark_sent({ reply.record }, snapshots)
           else
             table.insert(errors, err)
           end
@@ -428,7 +448,7 @@ function M.setup(opts)
             cb(false, err)
             return
           end
-          mark_sent(review_records)
+          mark_sent(review_records, snapshots)
           step_replies(1)
         end)
       end

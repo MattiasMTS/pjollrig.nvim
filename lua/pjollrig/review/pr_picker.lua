@@ -1,6 +1,6 @@
 -- pjollrig.nvim: open-PR picker for bare `:PjollrigReview pr`.
 --
--- Lists open PRs via the gh CLI and offers them through `vim.ui.select`
+-- Lists open PRs via the gh CLI and offers them through the floating picker
 -- so users don't need to know a PR number up front. The list is fetched
 -- asynchronously — the command returns immediately and the picker opens
 -- when gh answers. Cancelling the picker is a no-op.
@@ -48,7 +48,7 @@ function M.pick(on_choice)
       vim.notify("pjollrig: no open PRs found (or gh unavailable)", vim.log.levels.ERROR)
       return
     end
-    vim.ui.select(prs, {
+    require("pjollrig.ui.select").select(prs, {
       prompt = "Review PR",
       format_item = function(pr)
         local author = type(pr.author) == "table" and pr.author.login or "?"

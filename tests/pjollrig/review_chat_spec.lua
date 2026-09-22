@@ -166,11 +166,11 @@ local function fixture(cwd_a, cwd_b)
   }
 end
 
----Stub vim.ui.select: `choose(items, opts)` returns the item to pick (nil
+---Stub the floating picker: `choose(items, opts)` returns the item to pick (nil
 ---cancels); every call is recorded with its prompt and formatted rows.
 local function stub_select(choose)
   local calls = {}
-  vim.ui.select = function(items, opts, on_choice)
+  require("pjollrig.ui.select").select = function(items, opts, on_choice)
     local rows = {}
     for i, item in ipairs(items) do
       rows[i] = opts.format_item and opts.format_item(item) or tostring(item)
@@ -192,14 +192,14 @@ describe("pjollrig review chat", function()
     vim.fn.mkdir(projects, "p")
     chat()._set_projects_dir(projects)
     saved_cwd = vim.uv.cwd()
-    saved_select = vim.ui.select
+    saved_select = require("pjollrig.ui.select").select
     require("pjollrig.review.complete")._reset()
   end)
   after_each(function()
     pcall(function()
       require("pjollrig.review").stop()
     end)
-    vim.ui.select = saved_select
+    require("pjollrig.ui.select").select = saved_select
     vim.cmd.cd(saved_cwd)
     chat()._set_projects_dir(nil)
     require("pjollrig.review.complete")._reset()
@@ -502,7 +502,7 @@ describe("pjollrig review chat", function()
       vim.fn.mkdir(dir, "p")
       vim.cmd.cd(dir)
       fixture(vim.uv.cwd(), CWD_B)
-      vim.ui.select = function()
+      require("pjollrig.ui.select").select = function()
         error("no picker expected for `chat 1`")
       end
 

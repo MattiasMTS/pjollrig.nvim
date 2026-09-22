@@ -1,5 +1,5 @@
 -- Exercises no-arg :PjollrigSend sink selection. The default path uses
--- vim.ui.select, while users can override ui.sink_picker for Snacks,
+-- the floating picker, while users can override ui.sink_picker for Snacks,
 -- Telescope, fzf-lua, or any other picker.
 
 local tmp_state
@@ -55,19 +55,19 @@ describe("pjollrig sink picker", function()
     register_sink("only", seen)
 
     local picked
-    local orig_select = vim.ui.select
-    vim.ui.select = function()
-      error("vim.ui.select should not be called for a single sink")
+    local orig_select = require("pjollrig.ui.select").select
+    require("pjollrig.ui.select").select = function()
+      error("the floating picker should not be called for a single sink")
     end
     require("pjollrig.ui").select_sink(function(name)
       picked = name
     end)
-    vim.ui.select = orig_select
+    require("pjollrig.ui.select").select = orig_select
 
     assert.are.equal("only", picked)
   end)
 
-  it("select_sink opens vim.ui.select when multiple sinks exist", function()
+  it("select_sink opens the floating picker when multiple sinks exist", function()
     local seen = {}
     register_sink("alpha", seen)
     register_sink("beta", seen)
@@ -75,8 +75,8 @@ describe("pjollrig sink picker", function()
     local captured_items
     local captured_opts
     local picked
-    local orig_select = vim.ui.select
-    vim.ui.select = function(items, opts, cb)
+    local orig_select = require("pjollrig.ui.select").select
+    require("pjollrig.ui.select").select = function(items, opts, cb)
       captured_items = items
       captured_opts = opts
       cb(items[2])
@@ -84,7 +84,7 @@ describe("pjollrig sink picker", function()
     require("pjollrig.ui").select_sink(function(name)
       picked = name
     end)
-    vim.ui.select = orig_select
+    require("pjollrig.ui.select").select = orig_select
 
     assert.are.equal("beta", picked)
     assert.are.equal(2, #captured_items)
@@ -110,14 +110,14 @@ describe("pjollrig sink picker", function()
     register_sink("beta", seen)
 
     local picked
-    local orig_select = vim.ui.select
-    vim.ui.select = function()
-      error("vim.ui.select should not be called when ui.sink_picker is set")
+    local orig_select = require("pjollrig.ui.select").select
+    require("pjollrig.ui.select").select = function()
+      error("the floating picker should not be called when ui.sink_picker is set")
     end
     require("pjollrig.ui").select_sink(function(name)
       picked = name
     end)
-    vim.ui.select = orig_select
+    require("pjollrig.ui.select").select = orig_select
 
     assert.is_true(picker_called)
     assert.are.equal("alpha", picked)

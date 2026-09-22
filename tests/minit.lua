@@ -3,6 +3,9 @@
 local uv = vim.uv
 local cwd = uv.cwd()
 
+-- Tests must not discover the developer's live terminal panes.
+vim.env.WEZTERM_PANE = nil
+
 local args = {}
 local offline = vim.env.LAZY_OFFLINE == "1" or vim.env.LAZY_OFFLINE == "true"
 local filter_pattern = vim.env.PJOLLRIG_TEST_FILTER

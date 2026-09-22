@@ -182,15 +182,24 @@ function M.toggle_resolve(locator)
         vim.notify(("pjollrig: gh %s failed: %s"):format(mutation, vim.trim(result.stderr)), vim.log.levels.ERROR)
         return
       end
-      gh.resolved = resolving
-      record.updated_at = os.time()
-      local ok, err = save()
+      -- Network completion can outlive edits, deletion, or cache refresh.
+      -- Apply only the thread state to the current record, never a stale copy.
+      local current, persist = find({ id = record.id, scope = record.scope, project_root = record.project_root })
+      local current_gh = current and imported_github(current)
+      if not current_gh or not persist or current_gh.thread_node ~= gh.thread_node then
+        return
+      end
+      local previous, updated_at = current_gh.resolved, current.updated_at
+      current_gh.resolved = resolving
+      current.updated_at = os.time()
+      local ok, err = persist()
       if not ok then
-        gh.resolved = not resolving
+        current_gh.resolved = previous
+        current.updated_at = updated_at
         vim.notify("pjollrig: failed to persist thread state: " .. tostring(err), vim.log.levels.ERROR)
         return
       end
-      emit("PjollrigEdited", record)
+      emit("PjollrigEdited", current)
       vim.notify(("pjollrig: thread %s"):format(resolving and "resolved" or "unresolved"), vim.log.levels.INFO)
     end
   )
