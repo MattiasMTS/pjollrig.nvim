@@ -239,13 +239,6 @@ local function mark_sent(records, snapshots)
 end
 
 local function post_review(opts, repo, pr, review, cwd, cb)
-  local tmp = vim.fn.tempname() .. ".json"
-  -- `writefile` can also signal failure by returning -1 without throwing.
-  local write_ok, wrote = pcall(vim.fn.writefile, { vim.json.encode(review) }, tmp)
-  if not write_ok or wrote ~= 0 then
-    cb(false, "pjollrig: github sink could not write review payload to " .. tmp)
-    return
-  end
   helpers.system_async({
     cli(opts),
     "api",
@@ -253,9 +246,8 @@ local function post_review(opts, repo, pr, review, cwd, cb)
     "--method",
     "POST",
     "--input",
-    tmp,
-  }, { cwd = cwd }, function(result)
-    vim.fn.delete(tmp)
+    "-",
+  }, { cwd = cwd, stdin = vim.json.encode(review) }, function(result)
     if result.code ~= 0 then
       cb(false, "pjollrig: gh api failed: " .. result.stderr:gsub("%s+$", ""))
       return

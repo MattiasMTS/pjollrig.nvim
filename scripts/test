@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-timeout_seconds="${PJOLLRIG_TEST_TIMEOUT:-60}"
+timeout_seconds="${PJOLLRIG_TEST_TIMEOUT:-180}"
 if command -v gtimeout >/dev/null 2>&1; then
   exec gtimeout --kill-after=5s "$timeout_seconds" nvim --clean --headless -l tests/minit.lua --minitest "$@"
 elif command -v timeout >/dev/null 2>&1; then

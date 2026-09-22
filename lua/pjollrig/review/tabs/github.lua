@@ -29,18 +29,7 @@ local function str(value)
   return type(value) == "string" and value or nil
 end
 
----Executable for gh calls: honours `sinks.github.command` — the same
----knob the github sink and review/github.lua read — falling back to
----plain `gh`.
----@return string
-local function gh_cli()
-  local sinks = require("pjollrig.config").get().sinks
-  local github = type(sinks) == "table" and sinks.github or nil
-  if type(github) == "table" and type(github.command) == "string" and github.command ~= "" then
-    return github.command
-  end
-  return "gh"
-end
+local gh_cli = require("pjollrig.review.github").gh_cli
 
 ---The session's PR number, or nil when this is not a PR session.
 ---@param session table|nil

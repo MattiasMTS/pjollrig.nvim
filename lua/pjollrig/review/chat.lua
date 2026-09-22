@@ -193,7 +193,6 @@ end
 ---@field branch string|nil
 ---@field mtime number epoch seconds
 ---@field size integer bytes
----@field pr integer|nil never set today (transcripts carry no PR link); kept for the picker label
 
 ---Sessions for the cwd's slug (or every slug with `opts.all`), newest
 ---mtime first. Empty transcripts are skipped. `nil, err` when the
@@ -392,9 +391,6 @@ function M.format_session(session)
     session.branch or "?",
     human_size(session.size),
   }
-  if session.pr then
-    parts[#parts + 1] = "#" .. tostring(session.pr)
-  end
   return table.concat(parts, " · ")
 end
 

@@ -357,7 +357,7 @@ function M.show_file(root, ref, path)
   return result.stdout
 end
 
----mkdir -p via libuv; `known_dirs` caches directories already confirmed
+---mkdir -p; `known_dirs` caches directories already confirmed
 ---to exist so repeated calls stay cheap.
 ---@param path string
 ---@param known_dirs table<string, boolean>
@@ -365,16 +365,7 @@ local function mkdir_p(path, known_dirs)
   if known_dirs[path] then
     return
   end
-  if uv.fs_stat(path) then
-    known_dirs[path] = true
-    return
-  end
-  local parent = path:match("^(.*)/[^/]+$")
-  if parent and parent ~= "" and parent ~= path then
-    mkdir_p(parent, known_dirs)
-  end
-  local ok, err = uv.fs_mkdir(path, 493) -- 0755, filtered by umask
-  assert(ok, ("pjollrig: cannot create staging directory %s: %s"):format(path, tostring(err)))
+  assert(vim.fn.mkdir(path, "p", 493) == 1, "pjollrig: cannot create staging directory " .. path)
   known_dirs[path] = true
 end
 

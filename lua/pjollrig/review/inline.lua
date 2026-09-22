@@ -101,19 +101,12 @@ local function read_lines(path)
   return lines
 end
 
----`vim.diff` gained `linematch` (finer hunks for changed blocks) and the
----histogram algorithm at different times. Ask for the good options and
----fall back to the plain call on any Neovim that rejects them, rather
----than gating on a version number.
 ---@param a string
 ---@param b string
 ---@return integer[][]
 local function diff_indices(a, b)
   local opts = { result_type = "indices", algorithm = "histogram", linematch = 60 }
   local ok, result = pcall(vim.diff, a, b, opts)
-  if not ok or type(result) ~= "table" then
-    ok, result = pcall(vim.diff, a, b, { result_type = "indices" })
-  end
   if not ok or type(result) ~= "table" then
     return {}
   end

@@ -185,23 +185,6 @@ local function body_for(record)
   return truncate_right(text, BODY_MAX)
 end
 
----Format `records` into display strings, parallel-indexed to `records`.
----`M.pick` zips them into `{ record, display }` tables.
----@param records table[]
----@return string[]
-local function format_items(records)
-  local out = {}
-  local count = #records
-  local idx_width = #tostring(math.max(count, 1))
-  for i, r in ipairs(records) do
-    local idx = lpad(tostring(i), idx_width)
-    local loc = rpad(location_for(r), LOCATION_MAX)
-    local body = body_for(r)
-    out[i] = idx .. COLUMN_SEPARATOR .. loc .. COLUMN_SEPARATOR .. body
-  end
-  return out
-end
-
 ---Open the floating picker for `records` and invoke
 ---`require("pjollrig")[action](chosen.id)` on the picked record. No-op
 ---with an INFO notification when there are no records.
@@ -212,10 +195,12 @@ function M.pick(action, records)
     vim.notify("pjollrig: no comments", vim.log.levels.INFO)
     return
   end
-  local formatted = format_items(records)
   local items = {}
+  local idx_width = #tostring(#records)
   for i, r in ipairs(records) do
-    items[i] = { record = r, display = formatted[i] }
+    local idx = lpad(tostring(i), idx_width)
+    local loc = rpad(location_for(r), LOCATION_MAX)
+    items[i] = { record = r, display = idx .. COLUMN_SEPARATOR .. loc .. COLUMN_SEPARATOR .. body_for(r) }
   end
   require("pjollrig.ui.select").select(items, {
     prompt = ("Pjollrig: %s comment"):format(action),

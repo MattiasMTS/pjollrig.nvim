@@ -69,16 +69,18 @@ local function target(code)
   end
   local info = vim.fn.getwininfo(win)[1]
   -- Double-clicking code needs no gutter or spare statuscolumn cell.
-  if code then
-    if pos.wincol > info.textoff then
-      return { win = win, buf = buf, line = pos.line }
-    end
-    return
+  if code and pos.wincol > info.textoff then
+    return { win = win, buf = buf, line = pos.line }
   end
   -- Use the separating blank just before code. The combined review has its
   -- own text prefix, so its first cell is usable even with no native gutter.
   local col = info.wincol + info.textoff - (combined and 0 or 1)
   if (not combined and info.textoff == 0) or col < info.wincol then
+    return
+  end
+  -- A click where a drag ended can be a native double-click (Neovim 0.12).
+  -- Own that gesture on the button too, but leave other gutter cells native.
+  if code and pos.screencol ~= col then
     return
   end
   -- Never cover a custom statuscolumn glyph, fold control or sign.
@@ -90,6 +92,18 @@ local function target(code)
 end
 
 local function show_button(t)
+  if
+    hover
+    and button
+    and vim.api.nvim_win_is_valid(button)
+    and hover.win == t.win
+    and hover.buf == t.buf
+    and hover.line == t.line
+    and hover.row == t.row
+    and hover.col == t.col
+  then
+    return
+  end
   if not button_buf or not vim.api.nvim_buf_is_valid(button_buf) then
     button_buf = require("pjollrig.ui.float").create_scratch_buf({ filetype = "pjollrig-mouse" })
     vim.api.nvim_buf_set_lines(button_buf, 0, -1, false, { "+" })
@@ -135,8 +149,13 @@ function M.handle(key)
   elseif key == "LeftMouse" then
     M.clear()
     if t and (t.hit or double) then
-      click =
-        { win = t.win, buf = t.buf, line = t.line, tick = vim.api.nvim_buf_get_changedtick(t.buf), double = double }
+      click = {
+        win = t.win,
+        buf = t.buf,
+        line = t.line,
+        tick = vim.api.nvim_buf_get_changedtick(t.buf),
+        double = double and not t.hit,
+      }
     end
   elseif key == "LeftRelease" and click then
     local started = click

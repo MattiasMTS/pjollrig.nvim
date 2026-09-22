@@ -1959,23 +1959,16 @@ function M.open_comments()
   -- Both branches force the Comments view past set_view: drop any
   -- registered tab's keymaps (its hooks are for user-driven switches).
   clear_tab_keymaps()
+  local records
   if require("pjollrig.review").state() then
     project_mode = false
     project_root = nil
-    current_view = "comments"
-    file_filter = nil
-    if panel_winid and vim.api.nvim_win_is_valid(panel_winid) then
-      refresh()
-    else
-      hide()
-      open_window()
-    end
   else
     -- Resolve the records AND the root from the INVOKING buffer before
     -- any window changes: the fetched records size the panel and feed
     -- its first render, and the captured root keeps later refreshes
     -- rooted even when they run with the panel scratch buffer current.
-    local records = require("pjollrig").list()
+    records = require("pjollrig").list()
     project_root = nil
     for _, record in ipairs(records) do
       if type(record.project_root) == "string" and record.project_root ~= "" then
@@ -1985,14 +1978,14 @@ function M.open_comments()
     end
     project_root = project_root or require("pjollrig.store").root()
     project_mode = true
-    current_view = "comments"
-    file_filter = nil
-    if panel_winid and vim.api.nvim_win_is_valid(panel_winid) then
-      refresh(records)
-    else
-      hide()
-      open_window(records)
-    end
+  end
+  current_view = "comments"
+  file_filter = nil
+  if panel_winid and vim.api.nvim_win_is_valid(panel_winid) then
+    refresh(records)
+  else
+    hide()
+    open_window(records)
   end
   -- Both modes land focus in the panel: it is the surface the user
   -- asked for, and dd/ce/q act on the row under its cursor.

@@ -62,7 +62,7 @@ end
 ---Executable for GitHub calls: honours `sinks.github.command` — the
 ---same knob the github sink reads — and falls back to plain `gh`.
 ---@return string
-local function gh_cli()
+function M.gh_cli()
   local sinks = require("pjollrig.config").get().sinks
   local github = type(sinks) == "table" and sinks.github or nil
   if type(github) == "table" and type(github.command) == "string" and github.command ~= "" then
@@ -175,7 +175,7 @@ function M.toggle_resolve(locator)
   local query = ("mutation($id:ID!){%s(input:{threadId:$id}){thread{isResolved}}}"):format(mutation)
   vim.notify(("pjollrig: %s thread..."):format(resolving and "resolving" or "unresolving"), vim.log.levels.INFO)
   require("pjollrig.sinks.helpers").system_async(
-    { gh_cli(), "api", "graphql", "-f", "query=" .. query, "-f", "id=" .. gh.thread_node },
+    { M.gh_cli(), "api", "graphql", "-f", "query=" .. query, "-f", "id=" .. gh.thread_node },
     { cwd = record.project_root },
     function(result)
       if result.code ~= 0 then

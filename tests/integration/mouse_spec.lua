@@ -140,6 +140,29 @@ describe("pjollrig mouse comments", function()
     assert.is_false(has_button())
   end)
 
+  it("reuses the hover button until its source or position changes", function()
+    child.lua([[
+      local float = require("pjollrig.ui.float")
+      local open = float.open_or_reconfigure
+      button_updates = 0
+      float.open_or_reconfigure = function(...)
+        button_updates = button_updates + 1
+        return open(...)
+      end
+    ]])
+    at("move", 2, true)
+    local p = point(2, true)
+    mouse("move", p[1], p[2] + 2)
+    mouse("move", p[1], p[2] + 3)
+    assert.are.equal(1, child.lua_get("button_updates"))
+    at("move", 3, true)
+    assert.are.equal(2, child.lua_get("button_updates"))
+    mouse("move", 30, 1)
+    at("move", 3, true)
+    assert.are.equal(3, child.lua_get("button_updates"))
+    assert.is_true(has_button())
+  end)
+
   it("click opens the existing editor and persists a single-line comment", function()
     at("move", 2, true)
     at("press", 2)
@@ -239,6 +262,7 @@ describe("pjollrig mouse comments", function()
     no_preview()
     at("release", 2)
     assert.is_false(active())
+    assert.are.equal("n", child.fn.mode())
     -- Horizontal movement is a drag too, even on the same source line.
     local p = point(3)
     mouse("press", unpack(p))
@@ -251,12 +275,30 @@ describe("pjollrig mouse comments", function()
     assert.are.same({}, child.lua_get([[require("pjollrig").list()]]))
   end)
 
+  it("native double-clicks on the gutter button still add one line", function()
+    local p = point(2)
+    for _, action in ipairs({ "press", "release" }) do
+      child.api.nvim_input_mouse("left", action, "2", 0, p[1] - 1, p[2] - 1)
+      child.cmd("redraw")
+    end
+    assert.is_true(active())
+    local records = submit()
+    assert.are.equal(1, #records)
+    assert.are.same({ start = { 1, 0 }, end_ = { 1, 0 } }, records[1].range)
+  end)
+
   it("gutter clicks must release on the original button", function()
     at("press", 2)
     at("release", 3)
     assert.is_false(active())
     at("press", 4)
     at("release", 4, true)
+    assert.is_false(active())
+    local p = point(2)
+    child.api.nvim_input_mouse("left", "press", "2", 0, p[1] - 1, p[2] - 1)
+    child.cmd("redraw")
+    child.api.nvim_input_mouse("left", "release", "2", 0, p[1] - 1, p[2])
+    child.cmd("redraw")
     assert.is_false(active())
   end)
 

@@ -47,12 +47,7 @@ end
 -- self-contained for third-party consumers — do not fold into
 -- pjollrig.str.split_lines.
 local function split_lines_keep_blanks(text)
-  text = tostring(text or "")
-  local lines = {}
-  for line in (text .. "\n"):gmatch("([^\n]*)\n") do
-    table.insert(lines, line)
-  end
-  return lines
+  return vim.split(tostring(text or ""), "\n", { plain = true })
 end
 
 local function text_block(value)

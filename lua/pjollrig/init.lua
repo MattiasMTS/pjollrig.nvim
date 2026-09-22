@@ -64,6 +64,18 @@ local function emit(pattern, data)
   vim.api.nvim_exec_autocmds("User", { pattern = pattern, data = data })
 end
 
+---@param bufnr integer
+---@param row integer
+---@param col integer
+---@return integer row, integer col
+local function clamp_buffer_position(bufnr, row, col)
+  local line_count = vim.api.nvim_buf_line_count(bufnr)
+  row = math.max(0, math.min(row or 0, math.max(0, line_count - 1)))
+  local line = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1] or ""
+  col = math.max(0, math.min(col or 0, #line))
+  return row, col
+end
+
 ---Return the 0-indexed range currently in play for M.add.
 ---@param opts {range?: table}|nil
 ---@return {start: integer[], end_: integer[]}
@@ -97,19 +109,9 @@ local function resolve_range(opts)
     local vend = vim.fn.getpos("'>")
     if vstart[2] > 0 and vend[2] > 0 then
       local bufnr = vim.api.nvim_get_current_buf()
-      local line_count = vim.api.nvim_buf_line_count(bufnr)
-      ---Clamp a 1-indexed (row, col) pair from `getpos` to valid buffer
-      ---coordinates. Linewise visual sets col to `v:maxcol` (INT_MAX),
-      ---which makes `nvim_buf_set_extmark` reject the range — the record
-      ---is stored but never rendered.
-      local function clamp(row1, col1)
-        local row0 = math.max(0, math.min(row1 - 1, math.max(0, line_count - 1)))
-        local line = vim.api.nvim_buf_get_lines(bufnr, row0, row0 + 1, false)[1] or ""
-        local col0 = math.max(0, math.min(col1 - 1, #line))
-        return row0, col0
-      end
-      local sr, sc = clamp(vstart[2], vstart[3])
-      local er, ec = clamp(vend[2], vend[3])
+      -- Linewise visual uses INT_MAX columns; clamp before creating extmarks.
+      local sr, sc = clamp_buffer_position(bufnr, vstart[2] - 1, vstart[3] - 1)
+      local er, ec = clamp_buffer_position(bufnr, vend[2] - 1, vend[3] - 1)
       return {
         start = { sr, sc },
         end_ = { er, ec },
@@ -446,9 +448,9 @@ end
 ---source of truth while a buffer is open; persisted ranges need to follow
 ---them before writes, sends, and list formatting.
 ---@param bufnr integer
----@return { roots: table<string, boolean>, session: boolean, count: integer }
+---@return { roots: table<string, boolean> }
 local function sync_positions_for_buffer(bufnr)
-  local touched = { roots = {}, session = false, count = 0 }
+  local touched = { roots = {} }
   if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) or not vim.api.nvim_buf_is_loaded(bufnr) then
     return touched
   end
@@ -487,10 +489,8 @@ local function sync_positions_for_buffer(bufnr)
     local record = by_id[tostring(patch.id or "")]
     if record then
       record.range = patch.range
-      touched.count = touched.count + 1
       if record.scope == "session" then
         store.session_mark_dirty()
-        touched.session = true
       else
         local root = record.project_root or identity.project_root
         if root then
@@ -504,21 +504,13 @@ local function sync_positions_for_buffer(bufnr)
   return touched
 end
 
----Synchronise every loaded buffer and return the roots that need flushing.
----@return { roots: table<string, boolean>, session: boolean, count: integer }
+---Synchronise every loaded buffer before flushing stores.
 local function sync_all_loaded_positions()
-  local total = { roots = {}, session = false, count = 0 }
   for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_loaded(bufnr) then
-      local touched = sync_positions_for_buffer(bufnr)
-      total.count = total.count + touched.count
-      total.session = total.session or touched.session
-      for root in pairs(touched.roots) do
-        total.roots[root] = true
-      end
+      sync_positions_for_buffer(bufnr)
     end
   end
-  return total
 end
 
 ---@param action string
@@ -993,18 +985,6 @@ function M.add(opts)
       submit(body)
     end
   end)
-end
-
----@param bufnr integer
----@param row integer
----@param col integer
----@return integer row, integer col
-local function clamp_buffer_position(bufnr, row, col)
-  local line_count = vim.api.nvim_buf_line_count(bufnr)
-  row = math.max(0, math.min(row or 0, math.max(0, line_count - 1)))
-  local line = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1] or ""
-  col = math.max(0, math.min(col or 0, #line))
-  return row, col
 end
 
 ---@param bufnr integer

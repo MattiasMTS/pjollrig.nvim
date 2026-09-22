@@ -1672,37 +1672,19 @@ end
 ---irrelevant here.
 ---@param bufnr integer
 ---@param records table[]
----@param counter_records table[]?
+---@param covering table[]
+---@param display table
 ---@param active_range { winid: integer, top: integer, bot: integer }?
-local function dispatch_rail_expansion(bufnr, records, counter_records, active_range)
+local function dispatch_rail_expansion(bufnr, records, covering, display, active_range)
   local rail = require("pjollrig.ui.rail")
-  records = records or {}
-  if not active_range or #records == 0 then
+  if not active_range or #(records or {}) == 0 then
     rail.close_for(bufnr)
     return
-  end
-
-  -- Same visibility test the float expansion uses: records whose range
-  -- covers the cursor line in the window that owns this buffer's
-  -- expansion.
-  local cursor_line = vim.api.nvim_win_get_cursor(active_range.winid)[1]
-  local covering = {}
-  for _, record in ipairs(records) do
-    local start_line = record_start_line(record)
-    local end_line = record_end_line(record) or start_line
-    if cursor_line >= start_line and cursor_line <= end_line then
-      table.insert(covering, record)
-    end
   end
   if #covering == 0 then
     rail.clear_for(bufnr)
     return
   end
-  table.sort(covering, record_layout_less)
-
-  -- Title counters match the float expansion's: scope-wide display
-  -- positions, memoized across cursor moves that keep the covering set.
-  local display = display_positions_memoized(bufnr, covering, counter_records or records)
   local entries = {}
   for _, record in ipairs(covering) do
     local pos = display[tostring(record.id or "")]
@@ -2326,34 +2308,9 @@ function M.update_viewport_popups(bufnr, records, counter_records)
     end
   end
 
-  -- "eol" with ui.eol_expand = "rail": the cursor expansion renders into
-  -- the rail window instead of float popups. Everything below (the
-  -- float layout + render loop) stays byte-identical when the default
-  -- eol_expand = "float" is configured — this branch is simply never taken.
-  if mode == "eol" and current_expand_mode() == "rail" then
-    -- No float ever expands on this path; drop any popup left over from
-    -- a float-expansion pass (e.g. the expand mode changed) and sweep —
-    -- but only when something was actually open (this runs per
-    -- CursorMoved).
-    local hid = false
-    for _, handle in pairs(tab) do
-      if handle.popup_winid then
-        hide_popup(handle)
-        hid = true
-      end
-    end
-    if hid then
-      schedule_popup_sweeps()
-    end
-    dispatch_rail_expansion(bufnr, records, counter_records, active_range)
-    return
-  end
-
-  local layouts = {}
-  ---@type pjollrig.ui.render.CardCtx
-  local pass
+  -- Float and rail expansions share visibility, ordering and title counters.
+  local visible, display = {}, {}
   if active_range then
-    local visible = {}
     if mode == "eol" then
       -- Expand-on-demand: only records covering the cursor line (in the
       -- window that owns this buffer's popups) show their full popup;
@@ -2383,7 +2340,29 @@ function M.update_viewport_popups(bufnr, records, counter_records)
     -- case while typing/moving on a commented line) reuses the last map
     -- instead of re-sorting the whole counter pool per keystroke. The
     -- pass-scoped card context carries them into every card build.
-    local display = display_positions_memoized(bufnr, visible, counter_records or records)
+    display = display_positions_memoized(bufnr, visible, counter_records or records)
+  end
+
+  if mode == "eol" and current_expand_mode() == "rail" then
+    -- Close floats left by a mode switch; don't sweep on every cursor move.
+    local hid = false
+    for _, handle in pairs(tab) do
+      if handle.popup_winid then
+        hide_popup(handle)
+        hid = true
+      end
+    end
+    if hid then
+      schedule_popup_sweeps()
+    end
+    dispatch_rail_expansion(bufnr, records, visible, display, active_range)
+    return
+  end
+
+  local layouts = {}
+  ---@type pjollrig.ui.render.CardCtx
+  local pass
+  if active_range then
     pass = new_card_ctx(display)
 
     -- Group the visible records by anchor line (adjacent after the
@@ -2524,50 +2503,37 @@ end
 --- responsible for applying the returned patches to the store.
 ---@param bufnr integer
 ---@param records table[]
----@return { updates: { id: string, range: { start: integer[], end_: integer[] } }[], stale_ids: string[] }
+---@return { updates: { id: string, range: { start: integer[], end_: integer[] } }[] }
 function M.capture_position_patches(bufnr, records)
   local tab = handles[bufnr] or {}
   local updates = {}
-  local stale_ids = {}
 
   for _, record in ipairs(records or {}) do
     local id = tostring(record.id or "")
     local handle = tab[id]
-    if not handle or not handle.extmark_id or handle.extmark_id == 0 then
-      table.insert(stale_ids, id)
-    else
-      local pos = sync_handle_position(handle)
-      if not pos then
-        table.insert(stale_ids, id)
-      else
-        local stored_start = record_start_line(record)
-        local stored_end = record_end_line(record)
-        local moved = pos.start_line ~= stored_start
-        if not moved and stored_end and pos.end_line and pos.end_line ~= stored_end then
-          moved = true
-        end
-        if moved then
-          local start_col = record.range and record.range.start and record.range.start[2] or 0
-          local end_col = record.range and record.range.end_ and record.range.end_[2] or start_col
-          local new_end_row
-          if pos.end_line then
-            new_end_row = pos.end_line - 1
-          else
-            new_end_row = pos.start_line - 1
-          end
-          table.insert(updates, {
-            id = id,
-            range = {
-              start = { pos.start_line - 1, start_col },
-              end_ = { new_end_row, end_col },
-            },
-          })
-        end
+    local pos = handle and sync_handle_position(handle)
+    if pos then
+      local stored_start = record_start_line(record)
+      local stored_end = record_end_line(record)
+      local moved = pos.start_line ~= stored_start
+      if not moved and stored_end and pos.end_line and pos.end_line ~= stored_end then
+        moved = true
+      end
+      if moved then
+        local start_col = record.range and record.range.start and record.range.start[2] or 0
+        local end_col = record.range and record.range.end_ and record.range.end_[2] or start_col
+        table.insert(updates, {
+          id = id,
+          range = {
+            start = { pos.start_line - 1, start_col },
+            end_ = { (pos.end_line or pos.start_line) - 1, end_col },
+          },
+        })
       end
     end
   end
 
-  return { updates = updates, stale_ids = stale_ids }
+  return { updates = updates }
 end
 
 --- Resolve the comment id whose extmark covers the current cursor line

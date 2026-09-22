@@ -91,19 +91,11 @@ end
 -- (which keeps blanks): cmux tree/ps output is parsed line-by-line and
 -- blank/CR-terminated lines are noise here. Do not fold into pjollrig.str.
 local function split_nonempty_lines(text)
-  local lines = {}
-  for line in tostring(text or ""):gmatch("[^\r\n]+") do
-    table.insert(lines, line)
-  end
-  return lines
+  return vim.split(tostring(text or ""), "[\r\n]+", { trimempty = true })
 end
 
 local function split_tabs(text)
-  local fields = {}
-  for field in (tostring(text or "") .. "\t"):gmatch("([^\t]*)\t") do
-    table.insert(fields, field)
-  end
-  return fields
+  return vim.split(tostring(text or ""), "\t", { plain = true })
 end
 
 local function is_pi_name(value)

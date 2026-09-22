@@ -16,25 +16,22 @@ local function open_prs(cb)
     cb(nil)
     return
   end
-  local ok = pcall(vim.system, { "gh", "pr", "list", "--json", "number,title,author", "--limit", "50" }, {
-    text = true,
-  }, function(result)
-    vim.schedule(function()
+  require("pjollrig.review.git").run_async(
+    { "gh", "pr", "list", "--json", "number,title,author", "--limit", "50" },
+    nil,
+    function(result)
       if result.code ~= 0 then
         cb(nil)
         return
       end
-      local decoded, prs = pcall(vim.json.decode, result.stdout or "")
+      local decoded, prs = pcall(vim.json.decode, result.stdout)
       if not decoded or type(prs) ~= "table" or #prs == 0 then
         cb(nil)
         return
       end
       cb(prs)
-    end)
-  end)
-  if not ok then
-    cb(nil)
-  end
+    end
+  )
 end
 
 ---Pick an open PR and hand its number (as a string) to `on_choice`.

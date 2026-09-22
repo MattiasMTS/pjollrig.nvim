@@ -16,64 +16,6 @@ local builtin_integrations = {
   socket = "pjollrig.sinks.socket",
 }
 
-local builtin_defaults = {
-  clipboard = {
-    enabled = true,
-  },
-  cmux = {
-    enabled = true,
-  },
-  wezterm = {
-    enabled = true,
-  },
-  github = {
-    enabled = true,
-  },
-  socket = {
-    enabled = true,
-  },
-}
-
-local function integration_opts(value)
-  if type(value) == "table" then
-    return value
-  end
-  return {}
-end
-
-local function normalize_integration(value, default)
-  default = default or {}
-  local opts = integration_opts(value)
-  local enabled = default.enabled
-
-  if value == nil then
-    return enabled, opts
-  end
-  if type(value) == "boolean" then
-    return value, opts
-  end
-
-  if type(value) == "table" then
-    if value.enabled ~= nil then
-      enabled = value.enabled
-    end
-    return enabled, opts
-  end
-
-  return value, opts
-end
-
-local function load_spec(module_name, opts)
-  local mod = require(module_name)
-  if type(mod.setup) == "function" then
-    return mod.setup(opts)
-  end
-  if type(mod.spec) == "function" then
-    return mod.spec(opts)
-  end
-  return mod.spec
-end
-
 ---Register a sink adapter.
 ---
 ---Errors when a sink with the same name is already registered (mirrors
@@ -141,13 +83,15 @@ function M.setup(cfg)
     sinks[name] = nil
   end
   for name, module_name in pairs(builtin_integrations) do
-    local enabled, opts = normalize_integration(cfg[name], builtin_defaults[name])
+    local value = cfg[name]
+    local opts = type(value) == "table" and value or {}
+    local enabled = value ~= false and opts.enabled ~= false
     local mod = require(module_name)
     if enabled and type(mod.is_available) == "function" then
       enabled = mod.is_available(opts)
     end
     if enabled then
-      M.register(load_spec(module_name, opts))
+      M.register(mod.setup(opts))
     end
   end
 end

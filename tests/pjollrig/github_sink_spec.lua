@@ -2,8 +2,8 @@ local H = require("helpers")
 
 local ctx
 
----Fake gh on PATH: logs every argv line to `<dir>/gh/argv.log`, copies any
----`--input` file to `<dir>/gh/api-input.json`, and answers `pr view`,
+---Fake gh on PATH: logs every argv line to `<dir>/gh/argv.log`, captures
+---`--input` (including stdin) in `<dir>/gh/api-input.json`, and answers `pr view`,
 ---`repo view`, and `api` with canned JSON. Drop a `<dir>/gh/no-pr` marker
 ---to make `pr view` fail like gh does outside a PR branch.
 local function fake_gh(dir)
@@ -28,7 +28,7 @@ local function fake_gh(dir)
     '    if [ -f "$dir/fail-reply" ]; then rm "$dir/fail-reply"; echo "reply boom" >&2; exit 1; fi;;',
     "  esac;",
     '  while [ "$#" -gt 0 ]; do',
-    '    if [ "$1" = "--input" ]; then shift; cp "$1" "$dir/api-input.json"; fi;',
+    '    if [ "$1" = "--input" ]; then shift; cat "$1" > "$dir/api-input.json"; fi;',
     "    shift;",
     "  done;",
     "  echo '{}';",
@@ -109,7 +109,7 @@ describe("pjollrig github sink", function()
 
     assert.is_true(ok, err)
     local argv = table.concat(gh.argv(), "\n")
-    assert.is_truthy(argv:find("api repos/acme/widgets/pulls/42/reviews --method POST --input", 1, true))
+    assert.is_truthy(argv:find("api repos/acme/widgets/pulls/42/reviews --method POST --input -", 1, true))
     local body = gh.api_input()
     assert.are.equal("COMMENT", body.event)
     assert.are.equal(1, #body.comments)
