@@ -1,11 +1,14 @@
 #!/usr/bin/env -S nvim -l
 
-local uv = vim.uv or vim.loop
+local uv = vim.uv
 local cwd = uv.cwd()
+
+-- Tests must not discover the developer's live terminal panes.
+vim.env.WEZTERM_PANE = nil
 
 local args = {}
 local offline = vim.env.LAZY_OFFLINE == "1" or vim.env.LAZY_OFFLINE == "true"
-local filter_pattern = vim.env.MANICULE_TEST_FILTER
+local filter_pattern = vim.env.PJOLLRIG_TEST_FILTER
 for _, arg in ipairs(_G.arg or {}) do
   if arg == "--minitest" then
     -- Compatibility with the previous lazy.minit-based command.

@@ -2,6 +2,7 @@ name: lint-test
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
@@ -25,7 +26,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        nvim-version: [stable, nightly]
+        nvim-version: [v0.12.0, stable, nightly]
     runs-on: ${{ matrix.os }}
     name: test (${{ matrix.os }}, ${{ matrix.nvim-version }})
     timeout-minutes: 5

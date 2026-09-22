@@ -1,12 +1,12 @@
 local H = {}
-local uv = vim.uv or vim.loop
+local uv = vim.uv
 local function unique_name(prefix)
   return ("%s-%d-%d"):format(prefix, os.time(), math.random(1000000))
 end
 
 local function temp_dir(prefix)
   local parent = (vim.env.TMPDIR or "/tmp"):gsub("\\", "/"):gsub("/$", "")
-  local dir = ("%s/%s-%s"):format(parent, unique_name(prefix or "manicule"), tostring(vim.fn.getpid()))
+  local dir = ("%s/%s-%s"):format(parent, unique_name(prefix or "pjollrig"), tostring(vim.fn.getpid()))
   vim.fn.mkdir(dir, "p")
   return dir
 end
@@ -19,7 +19,7 @@ function H.project_dir(base, name)
 end
 
 function H.setup(opts)
-  local artifact_root = temp_dir("manicule-test")
+  local artifact_root = temp_dir("pjollrig-test")
   local ctx = {
     artifact_root = artifact_root,
     state = artifact_root .. "/state",
@@ -27,12 +27,12 @@ function H.setup(opts)
   }
   vim.fn.mkdir(ctx.state, "p")
 
-  require("manicule.store")._reset()
-  require("manicule.sinks")._reset()
+  require("pjollrig.store")._reset()
+  require("pjollrig.sinks")._reset()
   pcall(function()
-    require("manicule.ui.render")._reset_for_tests()
+    require("pjollrig.ui.render")._reset()
   end)
-  vim.g.loaded_manicule = nil
+  vim.g.loaded_pjollrig = nil
 
   local base = {
     store = {
@@ -44,26 +44,48 @@ function H.setup(opts)
     sinks = {
       clipboard = false,
       cmux = false,
+      socket = false,
     },
   }
-  require("manicule").setup(vim.tbl_deep_extend("force", base, opts or {}))
+  require("pjollrig").setup(vim.tbl_deep_extend("force", base, opts or {}))
   return ctx
 end
 
+---Remove a path recursively via `rm -rf`, retrying once.
+---vim.fn.delete(..., "rf") intermittently fails with E484 on macOS when
+---entries change under the walk (e.g. git object trees still settling);
+---rm tolerates both racing entries and read-only files.
+function H.rimraf(path)
+  if type(path) ~= "string" or path == "" or path == "/" then
+    return
+  end
+  for _ = 1, 2 do
+    local result = vim.system({ "rm", "-rf", path }, { text = true }):wait()
+    if result.code == 0 then
+      return
+    end
+  end
+end
+
 function H.teardown(ctx)
+  pcall(vim.cmd, "silent! tabonly")
   pcall(vim.cmd, "silent! only")
   pcall(vim.cmd, "silent! %bwipeout!")
+  -- Free all quickfix lists so a spec that populates one (e.g. the
+  -- "user's quickfix is untouched" coverage) can't leak it into a later
+  -- spec's "pjollrig never creates a qf list" assertion.
+  pcall(vim.fn.setqflist, {}, "f")
   pcall(function()
-    require("manicule")._stop_sync_timer_for_tests()
+    require("pjollrig")._reset_sync_timer()
   end)
-  require("manicule.store")._reset()
-  require("manicule.sinks")._reset()
+  require("pjollrig.store")._reset()
+  require("pjollrig.sinks")._reset()
   pcall(function()
-    require("manicule.ui.render")._reset_for_tests()
+    require("pjollrig.ui.render")._reset()
   end)
-  vim.g.loaded_manicule = nil
+  vim.g.loaded_pjollrig = nil
   if ctx then
-    pcall(vim.fn.delete, ctx.artifact_root, "rf")
+    H.rimraf(ctx.artifact_root)
   end
 end
 
@@ -82,7 +104,7 @@ end
 
 function H.capture_events(patterns)
   local events = {}
-  local group = vim.api.nvim_create_augroup("manicule-test-events-" .. tostring(math.random(1000000)), { clear = true })
+  local group = vim.api.nvim_create_augroup("pjollrig-test-events-" .. tostring(math.random(1000000)), { clear = true })
   vim.api.nvim_create_autocmd("User", {
     group = group,
     pattern = patterns,
@@ -101,7 +123,7 @@ end
 function H.register_fake_sink(name, opts)
   opts = opts or {}
   local calls = {}
-  require("manicule").register_sink({
+  require("pjollrig").register_sink({
     name = name,
     label = opts.label,
     description = opts.description,
@@ -176,7 +198,11 @@ function H.fake_cmux(ctx, opts)
     "      shift;",
     "    done;",
     '    if [ "$1" = "--" ]; then shift; fi;',
-    '    printf \'send\t%s\t%s\n\' "$surface" "$*" >> "$log";',
+    -- NOTE: log-append printf formats use a literal \n escape (backslash-n
+    -- in the script) — an embedded real newline would be written as NUL by
+    -- writefile() and truncate the format at exec time, leaving the log
+    -- without line separators.
+    '    printf \'send\t%s\t%s\\n\' "$surface" "$*" >> "$log";',
     "    ;;",
     "  set-buffer)",
     '    name="default";',
@@ -185,8 +211,30 @@ function H.fake_cmux(ctx, opts)
     '      if [ "$1" = "--" ]; then shift; break; fi;',
     "      shift;",
     "    done;",
+    -- Real cmux can acknowledge a set-buffer (exit 0) and still drop the
+    -- write server-side. drop_uploads simulates that: matching names exit
+    -- OK without persisting the buffer file.
+    '    case "$name" in',
+  })
+  for _, drop in ipairs(opts.drop_uploads or {}) do
+    if drop.mode == "once" then
+      table.insert(
+        lines,
+        "      "
+          .. drop.glob
+          .. ') if [ ! -f "$log.dropmark.$name" ]; then : > "$log.dropmark.$name"; printf \'set-buffer-dropped\t%s\\n\' "$name" >> "$log"; exit 0; fi ;;'
+      )
+    else
+      table.insert(
+        lines,
+        "      " .. drop.glob .. ') printf \'set-buffer-dropped\t%s\\n\' "$name" >> "$log"; exit 0 ;;'
+      )
+    end
+  end
+  vim.list_extend(lines, {
+    "    esac;",
     '    printf %s "$*" > "$log.buffer.$name";',
-    '    printf \'set-buffer\t%s\t%s\n\' "$name" "$*" >> "$log";',
+    '    printf \'set-buffer\t%s\t%s\\n\' "$name" "$*" >> "$log";',
     "    ;;",
     "  paste-buffer)",
     '    name="default"; surface="";',
@@ -195,10 +243,15 @@ function H.fake_cmux(ctx, opts)
     '      if [ "$1" = "--surface" ]; then shift; surface="$1"; shift; continue; fi;',
     "      shift;",
     "    done;",
-    '    printf \'paste-buffer\t%s\t%s\t%s\n\' "$surface" "$name" "$(cat "$log.buffer.$name" 2>/dev/null)" >> "$log";',
+    '    if [ ! -f "$log.buffer.$name" ]; then',
+    '      printf \'paste-missing\t%s\t%s\\n\' "$surface" "$name" >> "$log";',
+    "      printf 'Error: Buffer not found: %s\\n' \"$name\" >&2;",
+    "      exit 1;",
+    "    fi;",
+    '    printf \'paste-buffer\t%s\t%s\t%s\\n\' "$surface" "$name" "$(cat "$log.buffer.$name")" >> "$log";',
     "    ;;",
     "  send-key)",
-    '    printf \'key\t%s\t%s\n\' "$3" "$4" >> "$log";',
+    '    printf \'key\t%s\t%s\\n\' "$3" "$4" >> "$log";',
     "    ;;",
     "  *) exit 2 ;;",
     "esac",
@@ -206,6 +259,37 @@ function H.fake_cmux(ctx, opts)
   vim.fn.writefile(lines, bin)
   vim.fn.setfperm(bin, "rwx------")
   return bin, log
+end
+
+---Create a real git repository with an initial commit.
+---@param ctx table H.setup context
+---@param files table<string, string[]>|nil relative path -> lines
+---@return string root, fun(...): table git  -- git(...) runs git -C root
+function H.git_repo(ctx, files)
+  local root = H.project_dir(ctx.artifact_root, "gitrepo")
+  H.rimraf(root .. "/.git")
+  local function git(...)
+    local result = vim.system({ "git", "-C", root, ... }, { text = true }):wait()
+    assert(result.code == 0, ("git %s failed: %s"):format(table.concat({ ... }, " "), result.stderr))
+    return result
+  end
+  git("init", "-q", "-b", "main")
+  git("config", "user.email", "pjollrig@test.local")
+  git("config", "user.name", "Pjollrig Test")
+  git("config", "commit.gpgsign", "false")
+  -- No detached background jobs: they keep writing into .git while
+  -- teardown deletes the tree, the source of intermittent E484 noise.
+  git("config", "gc.auto", "0")
+  git("config", "maintenance.auto", "false")
+  git("config", "core.fsmonitor", "false")
+  for path, lines in pairs(files or {}) do
+    local abs = root .. "/" .. path
+    vim.fn.mkdir(vim.fn.fnamemodify(abs, ":h"), "p")
+    vim.fn.writefile(lines, abs)
+    git("add", path)
+  end
+  git("commit", "-q", "--allow-empty", "-m", "init")
+  return root, git
 end
 
 return H

@@ -17,8 +17,8 @@ jobs:
       - name: panvimdoc
         uses: kdheepak/panvimdoc@v4.0.1
         with:
-          vimdoc: manicule
-          version: "Neovim >= 0.10.0"
+          vimdoc: pjollrig
+          version: "Neovim >= 0.12.0"
           demojify: true
           treesitter: true
       - name: Push changes

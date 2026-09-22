@@ -21,7 +21,7 @@ body:
   - type: input
     attributes:
       label: "Neovim version (nvim -v)"
-      placeholder: "0.10.0 or newer"
+      placeholder: "0.12.0 or newer"
     validations:
       required: true
   - type: input
