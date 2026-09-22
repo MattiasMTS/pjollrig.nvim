@@ -73,7 +73,6 @@ local function add_file(model, pair, index, cfg)
     if old_line then
       section.old_rows[old_line] = row
     end
-    return row
   end
   if not left or not right then
     append(model, section, "  Cannot read this file; refresh after it becomes available.", { fold = 1 })
@@ -130,7 +129,6 @@ local function add_file(model, pair, index, cfg)
     end
   end
   model.lines[section.header] = ("%s  [%s]  +%d -%d"):format(clean(pair.path), pair.status, added, removed)
-  section.last = #model.lines
   append(model, section, "", { fold = 0 })
 end
 

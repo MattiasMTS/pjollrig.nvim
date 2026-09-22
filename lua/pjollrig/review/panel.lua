@@ -15,7 +15,7 @@
 -- counts (a baseline-less `doc` pair renders a dim `[·]` and no
 -- diffstat); the OPEN pair's line is marked with a `▸ ` overlay, a
 -- full-line `PjollrigPanelCurrent` background, and a bold filename;
--- VIEWED pairs (`v`, or auto-marked by next/prev) get a `✓ ` lead and
+-- VIEWED pairs (`v`, or auto-marked by next) get a `✓ ` lead and
 -- dim. The tab has two LAYOUTS — `t` toggles them for the session,
 -- `review.panel.layout` picks the default: "flat" lists full paths,
 -- one row per pair; "tree" groups the same pairs by directory (Pierre
@@ -30,7 +30,7 @@
 -- any drill-down scope); switching tabs also clears the scope.
 --
 -- Outside a review session, `:PjollrigList` opens the same panel in
--- PROJECT mode (M.list): a single `Comments N · project` tab listing
+-- PROJECT mode (M.open_comments): a single `Comments N · project` tab listing
 -- every project comment — same rows, same dd/ce/u/<C-r> maps, <CR>
 -- jumps to the file in the previous window, `q` closes in any
 -- placement. H/L are not mapped (one tab; the native motions stay)
@@ -103,7 +103,7 @@ local project_mode = false
 ---Project root captured when the project-mode panel opened — resolved
 ---from the INVOKING buffer, because later refreshes may run with the
 ---panel scratch buffer current, where root resolution has nothing to
----walk from. Passed as `_root` on every project-mode list().
+---walk from. Passed as `opts.root` on every project-mode list().
 ---@type string|nil
 local project_root = nil
 
@@ -526,9 +526,7 @@ local function pair_row_ctx()
     comment_total = #records,
     icons = icons,
     with_icons = icons.enabled(),
-    -- Per-pair {added, removed} counts, computed once per session on the
-    -- first render and cached on the session (see review.diffstat) —
-    -- deliberately NOT refreshed when the worktree side changes mid-review.
+    -- Cached per-session counts; empty while the async fill is pending.
     diffstat = review.diffstat() or {},
     viewed = state.viewed or {},
   }
@@ -1518,11 +1516,8 @@ local function setup_panel_keymaps(bufnr)
     end
   end, "Pjollrig review: back to files view")
 
-  -- `v` toggles viewed state (next/prev also auto-mark the pair they
-  -- leave; `v` is the manual toggle/un-mark): a pair row toggles that
-  -- pair; a tree directory row toggles its whole subtree — any unviewed
-  -- file marks everything viewed, an all-viewed subtree un-marks. Falls
-  -- through to the default `v` (visual mode) outside the Files tab.
+  -- `v` toggles a pair or whole subtree: mark all if any are unviewed,
+  -- otherwise unmark all. Native visual mode outside the Files tab.
   map("v", function()
     if current_view ~= "files" then
       feed_default("v")

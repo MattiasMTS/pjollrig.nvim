@@ -274,11 +274,11 @@ and a live comment count (colored filetype icons when an icon provider
 is installed — see `ui.icons`), and the pair on screen is marked with
 `▸`, a highlighted line, and a bold filename.
 
-Files you navigate away from with `:PjollrigReviewNext`/`Prev` (or
-`<Tab>`/`<S-Tab>` in a review buffer) are marked viewed — `✓` and dimmed
-in the panel, with progress (`3/12 viewed`) in the panel's winbar — and
-skipped by further next/prev while unviewed files remain. `v` in the
-panel toggles a file's viewed state by hand.
+Files you navigate away from with `:PjollrigReviewNext` (or `<Tab>` in a
+review buffer) are marked viewed — `✓` and dimmed in the panel, with progress
+(`3/12 viewed`) in the winbar. Next skips viewed files while unviewed files
+remain. `:PjollrigReviewPrev` / `<S-Tab>` steps back without marking or skipping.
+`v` in the panel toggles a file's viewed state by hand.
 
 Panel keymaps (buffer-local): `L`/`H` switch the Files/Comments tabs.
 `<CR>` on a commented file drills into a comments view scoped to that

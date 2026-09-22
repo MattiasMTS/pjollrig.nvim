@@ -25,7 +25,7 @@ describe("pjollrig config key renames", function()
     { opts = { ui = { display = "eol" } }, old = "ui.display", new = "ui.display_mode" },
     { opts = { ui = { expand = "float" } }, old = "ui.expand", new = "ui.eol_expand" },
     { opts = { ui = { sticky = true } }, old = "ui.sticky", new = "ui.always_show_popups" },
-    { opts = { store = { branch = true } }, old = "store.branch", new = "store.scope_by_branch" },
+    { opts = { store = { branch = false } }, old = "store.branch", new = "store.scope_by_branch" },
     { opts = { ui = { width = 60 } }, old = "ui.width", new = "ui.editor.width" },
     { opts = { ui = { height = 5 } }, old = "ui.height", new = "ui.editor.height" },
     { opts = { ui = { editor_mode = "insert" } }, old = "ui.editor_mode", new = "ui.editor.start_mode" },
@@ -79,6 +79,8 @@ describe("pjollrig config key renames", function()
   it("validates the new keys' values under their new names", function()
     local config = require("pjollrig.config")
     local cases = {
+      { opts = { ui = false }, needle = "ui" },
+      { opts = { store = "path" }, needle = "store" },
       { opts = { review = { diff_mode = "sideways" } }, needle = "review.diff_mode" },
       { opts = { ui = { display_mode = "sideways" } }, needle = "ui.display_mode" },
       { opts = { ui = { eol_expand = "sideways" } }, needle = "ui.eol_expand" },
@@ -92,6 +94,13 @@ describe("pjollrig config key renames", function()
       assert.is_false(ok, case.needle .. " should be rejected")
       assert.is_truthy(tostring(err):find(case.needle, 1, true), tostring(err))
     end
+  end)
+
+  it("accepts the configuration example in generated help", function()
+    local help = table.concat(vim.fn.readfile("doc/pjollrig.txt"), "\n")
+    local example = assert(help:match('require%("pjollrig"%)%.setup%((%b{})%)'))
+    local opts = assert(loadstring("return " .. example))()
+    assert.are.equal("table", type(require("pjollrig.config").setup(opts)))
   end)
 
   it("get() returns the live merged table — the runtime-override channel", function()

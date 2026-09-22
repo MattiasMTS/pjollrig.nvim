@@ -194,26 +194,10 @@ local renamed_keys = {
   ["ui.cancel_keys"] = "ui.editor.cancel_keys",
 }
 
----Value at the dotted `path` inside `opts`, or nil when any segment is
----missing / not a table.
----@param opts table
----@param path string
----@return any
-local function lookup(opts, path)
-  local node = opts
-  for segment in path:gmatch("[^.]+") do
-    if type(node) ~= "table" then
-      return nil
-    end
-    node = node[segment]
-  end
-  return node
-end
-
 ---@param opts table
 local function reject_renamed_keys(opts)
   for old, new in pairs(renamed_keys) do
-    if lookup(opts, old) ~= nil then
+    if vim.tbl_get(opts, unpack(vim.split(old, ".", { plain = true }))) ~= nil then
       error(("pjollrig: %s was renamed to %s"):format(old, new))
     end
   end

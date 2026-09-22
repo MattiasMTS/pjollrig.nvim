@@ -3,9 +3,7 @@
 -- Home of the palette math (`blend`) and the card timestamp label
 -- (`relative_time`). Both are pure functions with no vim state beyond
 -- `os.time`/`os.date`, extracted from `ui/render.lua` so they can be
--- consumed without pulling in the renderer. `ui/render.lua` re-exports
--- both unchanged for existing callers (review/panel.lua, specs); those
--- get repointed here in a later wave.
+-- consumed without pulling in the renderer.
 
 local M = {}
 

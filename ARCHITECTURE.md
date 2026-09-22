@@ -97,7 +97,7 @@ reload-time identities would diverge.
 
 ## Rendering
 
-`ui/render.lua` is the only module that owns visual state. For each visible
+`ui/render.lua` owns comment anchors and decorations. For each visible
 record it keeps one handle containing:
 
 - a primary extmark for anchoring and line-number highlighting
@@ -423,7 +423,7 @@ worktree right). One active session at a time, in its own tab page.
   session-scoped, reset in `close()`). File rows behave identically in both
   layouts: `<CR>` drills into a scoped comments view or calls
   `review.open_pair(idx)`; the Comments tab lists the session records (resolved
-  ones dimmed, `dd`/`ce`/`u`/`<C-r>`/`r`/`gr` buffer-local). Lifecycle
+  ones dimmed, `dd`/`ce`/`u`/`<C-r>` buffer-local). Lifecycle
   mirrors `ui/rail.lua`: dedicated augroup, WinClosed teardown,
   window+buffer+autocmds dropped on hide, full state reset in `close()`
   (called by `stop()`).

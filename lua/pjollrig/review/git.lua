@@ -15,12 +15,7 @@ local uv = vim.uv
 ---@return {code: integer, stdout: string, stderr: string}
 function M.run(argv, opts)
   opts = opts or {}
-  local result = vim.system(argv, { text = true, cwd = opts.cwd }):wait()
-  return {
-    code = result.code or -1,
-    stdout = result.stdout or "",
-    stderr = result.stderr or "",
-  }
+  return M.wait(vim.system(argv, { text = true, cwd = opts.cwd }))
 end
 
 ---Spawn `argv` WITHOUT waiting, so independent subprocesses can run

@@ -394,20 +394,6 @@ local function list_surfaces(opts)
   return nil, tree_err or rpc_err
 end
 
--- Surfaces from `list_surfaces` already carry the tree-parsed tty (the
--- rpc/tree merge keeps it); build the ref -> tty lookup from them instead
--- of re-forking `cmux tree`.
-local function ttys_by_surface_ref(surfaces)
-  local ttys = {}
-  for _, surface in ipairs(surfaces) do
-    local ref = surface_ref(surface)
-    if ref and surface.tty then
-      ttys[ref] = surface.tty
-    end
-  end
-  return ttys
-end
-
 local function ps_commands_for_tty(tty, cache)
   if not tty or tty == "" then
     return {}
@@ -576,7 +562,6 @@ function M.list_agent_surfaces(opts)
   end
 
   local states, state_labels, dropped_states = read_agent_states(opts)
-  local ttys = nil
   local ps = {}
   local matches = {}
   local seen = {}
@@ -589,13 +574,6 @@ function M.list_agent_surfaces(opts)
     end
     local ref = surface_ref(surface)
     local key_for_surface = ref or surface.id or tostring(surface.index or surface)
-    if not metadata.tty and ref then
-      metadata.tty = surface.tty
-      if not metadata.tty then
-        ttys = ttys or ttys_by_surface_ref(surfaces)
-        metadata.tty = ttys[ref]
-      end
-    end
     if not seen[key_for_surface] then
       seen[key_for_surface] = true
       table.insert(matches, apply_agent_metadata(surface, metadata))
@@ -635,10 +613,6 @@ function M.list_agent_surfaces(opts)
         }
       elseif opts.process_fallback ~= false then
         local tty = surface.tty
-        if not tty then
-          ttys = ttys or ttys_by_surface_ref(surfaces)
-          tty = ttys[surface_ref(surface)]
-        end
         for _, command in ipairs(ps_commands_for_tty(tty, ps)) do
           local command_agent = detect_agent_from_command(command)
           if title_matches(command_agent, opts.patterns) then
