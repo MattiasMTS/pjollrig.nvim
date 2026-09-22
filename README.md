@@ -28,16 +28,17 @@ a review batch.
   popups, inline boxes, or hidden anchors — cycled live with
   `:PjollrigDisplay`.
 - Diff-review sessions (`:PjollrigReview`) over uncommitted changes, a git
-  ref, a GitHub PR, or two directories.
+  ref, or two directories. No network requests on review startup.
 - A comments panel for scanning, jumping, editing, and deleting comments —
   the quickfix list stays yours.
 - Project-scoped and session-scoped persistence.
 - Pluggable sinks for sending comments elsewhere; clipboard, cmux, WezTerm, and
-  GitHub sinks are built in.
+  a JSONL Unix-socket transport are built in.
 - Native `User` autocmd events for lifecycle hooks.
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for the deeper implementation notes and
-event payloads.
+event payloads. GitHub integration and Claude transcript review are
+[deferred features](./docs/deferred-features.md), not part of the current release.
 
 ## Requirements
 
@@ -90,7 +91,7 @@ Update your plugin spec to `MattiasMTS/pjollrig.nvim`, Lua imports to
 The old API names are not aliases. Your own leader keys can stay the same.
 
 The default comment store remains `stdpath("state")/manicule/`, and existing
-scratch-buffer URIs and cached chat-document paths retain their identities.
+comment URIs retain their identities.
 There is no data migration. An explicitly configured `store.dir` still wins.
 If you use lazy.nvim's `dev = true`, rename your local checkout to
 `pjollrig.nvim` or set `dir` to its existing path.
@@ -212,8 +213,6 @@ side as usual, then send the batch with `:PjollrigReviewFinish [sink]`.
 
     :PjollrigReview              " uncommitted changes (vs HEAD)
     :PjollrigReview main         " your branch vs merge-base with main
-    :PjollrigReview pr 123       " a GitHub PR (requires gh CLI)
-    :PjollrigReview chat         " a Claude Code assistant turn, as a markdown document
     :PjollrigReview <dirA> <dirB> " any two directories
     :PjollrigReviewNext          " next changed file
     :PjollrigReviewPrev          " previous changed file
@@ -229,8 +228,7 @@ mid-session. `split` (default) is a side-by-side `:diffsplit` pair.
 added lines highlighted, removed lines drawn as virtual text where they
 used to sit, and unchanged regions folded away (tune with
 `review.fold_unchanged` and `review.context`; `za`/`zR` behave as usual).
-Comments anchor to true worktree line numbers in both modes, so
-`:PjollrigSend github` posts them at the same lines either way; removed
+Comments anchor to true worktree line numbers in both modes; removed
 lines and the read-only baseline side are not commentable. `]h` / `[h`
 jump between hunks (wrapping).
 
@@ -289,8 +287,7 @@ undo/redo a deletion, `<Esc>` goes back; switching tabs also clears
 the scope); `<CR>` on a file without comments switches the diff to
 that pair, and `o` always opens the pair. `v` toggles viewed. `t`
 toggles the Files tab's layout (below). `:PjollrigToggle` shows/hides
-the panel during a review. Running `:PjollrigReview pr` with no number
-opens a picker over the repository's open PRs.
+the panel during a review.
 
 The Files tab has two layouts — `"flat"` (the default; set
 `review.panel.layout` to change it) lists one full path per line, and
@@ -307,7 +304,7 @@ whole subtree viewed. File rows behave identically in both layouts
 Plugins can add their own panel tabs after the builtin Files/Comments
 pair with `require("pjollrig").register_review_tab({...})`: a unique
 `name`, a winbar `title` (a string, or a function for a live count like
-`Checks 7/9`), and a `build(ctx)` returning the rows to render.
+`Tasks 7/9`), and a `build(ctx)` returning the rows to render.
 Optional extras: `available(session)` gates the tab per session,
 tab-local `keymaps` are active only while it is current, `on_show` is a
 lazy-fetch hook, `prefetch = true` fires it at review open (disable all
@@ -316,28 +313,9 @@ the winbar spinner and live row ticking, and `ctx.refresh()` re-renders
 after an async fetch. See ARCHITECTURE.md ("Extension Points") for the
 full spec.
 
-When you review a PR with its head checked out, existing GitHub review
-comments are imported as pjollrig records and render inline. They can be
-edited or deleted locally (changes never sync back to GitHub) and are
-excluded from `:PjollrigReviewFinish` and the `github` sink, so GitHub's
-own comments are never echoed back as a new review; re-running
-`:PjollrigReview pr N` never duplicates them. In the panel's comments
-view, `r` replies to an imported comment's thread (the reply is stored
-locally and posted by the next `github` send) and `gr` toggles the
-thread's resolved state on GitHub; resolved threads are prefixed with `✓`.
-
-`:PjollrigReview chat` reviews what a coding agent *wrote* rather than what
-it changed. It lists the Claude Code sessions for the current directory
-(read from `~/.claude/projects`, newest first — `Title · age · branch ·
-size`), then the session's assistant turns (`HH:MM  first line  (n
-lines)`), and opens the picked turn's text as a markdown document in the
-normal review session: comment on the plan or report line by line, then
-send the batch with `:PjollrigReviewFinish`. `chat <n>` skips both pickers
-and takes the newest session's n-th turn (1 = latest; `<Tab>` completes the
-numbers), `chat all` picks across every project, and a single session for
-the directory skips straight to its turns. One-line narration between tool
-calls is left out of the picker. The transcripts are read, never modified;
-the keyword does nothing useful until Claude Code has run in the directory.
+Review startup resolves local Git data asynchronously; the editor stays
+responsive while baselines are staged. Large all-files views still take time
+to build. See [performance measurements](./docs/performance.md).
 
 External tools can drive a review session by writing a JSON job file and
 calling `require("pjollrig.review").start_from_job(path)`; comments return
@@ -386,7 +364,7 @@ require("pjollrig").setup({
     panel = {
       position = "bottom", -- "bottom", "left", "right", or "float"
       layout = "flat", -- Files tab: "flat" paths or a "tree" grouped by directory (t toggles)
-      prefetch = true, -- eagerly fetch opted-in panel tabs (PR header, CI) at review open
+      prefetch = true, -- run opted-in custom tabs' prefetch hooks at review open
       -- size = 12, -- rows (bottom) or columns (left/right); default per position
     },
   },
@@ -417,7 +395,7 @@ Nerd Font badges on without a provider, and `false` keeps everything plain
 text (`[gh]`, `●`, `✓`).
 
 Pjollrig uses built-in floating lists for send destinations, terminal panes,
-comments, PRs, and chat sessions. Use `j`/`k` or the arrow keys to move,
+and comments. Use `j`/`k` or the arrow keys to move,
 Enter to choose, and Escape or `q` to cancel. Long lists scroll normally.
 The send flow still chooses a sink first, then a pane when needed.
 `ui.sink_picker` can override the sink list (for example,
@@ -470,13 +448,8 @@ Built-ins:
   options shown in the configuration example above.
 - `wezterm` pastes the markdown review into a selected split in Neovim's
   current WezTerm tab. See the workflow below.
-- `github` posts the batch as a pull-request review via the `gh` CLI
-  (options: `event`, `pre_text`, `clear_on_success`; PR taken from `ctx.pr`
-  or the current branch). `:PjollrigSend github
-  [comment|approve|request-changes]` picks the review verdict for that
-  send, overriding the configured `event`. Records created with the review
-  panel's `r` reply action are posted as thread replies instead of review
-  comments.
+- `socket` returns comments to an external review driver over a Unix socket;
+  hidden from interactive sink pickers because it needs a caller-provided destination.
 
 The bundled text sinks (`clipboard`, `cmux`, `wezterm`) also accept `pre_text` and
 `post_text` strings inserted before and after the formatted comments.

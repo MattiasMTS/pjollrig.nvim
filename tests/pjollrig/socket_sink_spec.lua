@@ -122,7 +122,7 @@ describe("pjollrig socket sink", function()
   it("is hidden from selection listing but dispatchable by name with ctx.socket", function()
     local sinks = require("pjollrig.sinks")
     sinks._reset()
-    sinks.setup({ clipboard = false, github = false, cmux = false })
+    sinks.setup({ clipboard = false, cmux = false })
 
     -- Hidden from picker / single-sink auto-dispatch listing: without a
     -- review-supplied ctx.socket the sink can never validate interactively.

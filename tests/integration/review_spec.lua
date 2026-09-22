@@ -420,66 +420,6 @@ describe("pjollrig review session", function()
     assert.are.equal("cmd.lua", state.files[1].path)
   end)
 
-  it(":PjollrigReview pr (bare) picks an open PR and labels with its title", function()
-    vim.cmd("runtime plugin/pjollrig.lua")
-    local root, git = H.git_repo(ctx, { ["a.lua"] = { "return 1" } })
-    local base_oid = vim.trim(git("rev-parse", "HEAD").stdout)
-    git("checkout", "-q", "-b", "pr-branch")
-    vim.fn.writefile({ "return 2" }, root .. "/a.lua")
-    git("commit", "-aqm", "pr change")
-    local head_oid = vim.trim(git("rev-parse", "HEAD").stdout)
-
-    -- Fake gh answering `pr list` (picker), `pr view` (resolver), and the
-    -- comment-import endpoints.
-    local bin = ctx.artifact_root .. "/bin"
-    vim.fn.mkdir(bin, "p")
-    vim.fn.writefile({
-      "#!/bin/sh",
-      'if [ "$1 $2" = "pr list" ]; then',
-      '  echo \'[{"number":42,"title":"Add widgets","author":{"login":"octocat"}}]\';',
-      'elif [ "$1 $2" = "pr view" ]; then',
-      ('  echo \'{"baseRefOid":"%s","headRefOid":"%s","title":"Add widgets"}\';'):format(base_oid, head_oid),
-      'elif [ "$1 $2" = "repo view" ]; then',
-      '  echo \'{"nameWithOwner":"acme/widgets"}\';',
-      "else",
-      "  echo '[]';",
-      "fi",
-    }, bin .. "/gh")
-    vim.fn.system({ "chmod", "+x", bin .. "/gh" })
-
-    local saved_path = vim.env.PATH
-    vim.env.PATH = bin .. ":" .. saved_path
-    local saved_cwd = vim.uv.cwd()
-    vim.cmd.cd(root)
-
-    local original_select = require("pjollrig.ui.select").select
-    local seen_item
-    require("pjollrig.ui.select").select = function(items, select_opts, on_choice)
-      seen_item = select_opts.format_item(items[1])
-      on_choice(items[1])
-    end
-    local ok, err = pcall(vim.cmd, "PjollrigReview pr")
-    -- The PR list fetch is async too now: the picker fires only when the
-    -- fake gh answers, so the stub must stay installed until then.
-    vim.wait(2000, function()
-      return seen_item ~= nil
-    end)
-    require("pjollrig.ui.select").select = original_select
-    -- PATH/cwd stay in place until the ASYNC resolve chain (gh pr view,
-    -- staging) has attached — the command only opened the shell.
-    if ok then
-      wait_attached()
-    end
-    vim.env.PATH = saved_path
-    vim.cmd.cd(saved_cwd)
-    assert.is_true(ok, err)
-
-    assert.are.equal("#42 Add widgets \u{2014} octocat", seen_item)
-    local state = require("pjollrig.review").state()
-    assert.is_truthy(state, "picker did not start a session")
-    assert.are.equal("pr 42: Add widgets", state.label)
-  end)
-
   it("deleted-file (D) pairs accept comments on the left buffer", function()
     vim.cmd("runtime plugin/pjollrig.lua")
     local root = H.git_repo(ctx, { ["gone.lua"] = { "return 1" } })
@@ -986,163 +926,28 @@ describe("pjollrig review session", function()
     return record
   end
 
-  it("r in comments view replies to an imported comment", function()
+  it("keeps legacy imports visible and stored without sending them as local feedback", function()
     local R = require("pjollrig.review")
     local files = make_pairs(1)
-    put_imported(files[1].right, { id = 9001, imported = true, thread_id = 9001, pr = 42 })
-    assert.is_true(R.start({ files = files, label = "reply" }))
-
-    local ui = require("pjollrig.ui")
-    local original_prompt = ui.prompt
-    ui.prompt = function(_opts, cb)
-      cb("sounds good")
-    end
-    to_comments_view(1)
-    press_in_panel(1, "r")
-    ui.prompt = original_prompt
-
-    local reply
-    for _, r in ipairs(require("pjollrig.store").all(ctx.root)) do
-      if r.body == "sounds good" then
-        reply = r
-      end
-    end
-    assert.is_truthy(reply, "reply record not created")
-    assert.are.equal(require("pjollrig.uri").for_path(files[1].right), reply.uri)
-    assert.are.same({ start = { 0, 0 }, end_ = { 0, 0 } }, reply.range)
-    assert.are.same({ to = 9001, pr = 42 }, reply.meta.github_reply)
-    assert.is_nil(reply.meta.github)
-  end)
-
-  it("r on a non-imported comment warns and creates nothing", function()
-    local R = require("pjollrig.review")
-    local files = make_pairs(1)
-    assert.is_true(R.start({ files = files, label = "reply-warn" }))
+    local record = put_imported(files[1].right, { id = 9001, imported = true })
+    local calls = H.register_fake_sink("capture")
+    assert.is_true(R.start({ files = files, label = "legacy", sink = "capture" }))
     add_comment(files[1].right, "local note")
-
-    local warned
-    local original_notify = vim.notify
-    vim.notify = function(msg, level)
-      if level == vim.log.levels.WARN then
-        warned = msg
-      end
-    end
+    assert.are.equal(2, #require("pjollrig").list(nil, { root = ctx.root }))
+    local pending = require("pjollrig").list({ exclude_imported = true }, { root = ctx.root })
+    assert.are.equal(1, #pending)
+    assert.are.equal("local note", pending[1].body)
     to_comments_view(1)
-    press_in_panel(1, "r")
-    vim.notify = original_notify
-
-    assert.is_truthy(warned, "expected a WARN")
-    assert.are.equal(1, #require("pjollrig").list(nil, { root = ctx.root }))
-  end)
-
-  ---Fake gh on PATH that logs every argv line and answers any call
-  ---with an empty JSON object (enough for graphql mutations).
-  local function fake_gh_resolve(dir)
-    local home = dir .. "/gh-resolve"
-    local bin = home .. "/bin"
-    vim.fn.mkdir(bin, "p")
-    vim.fn.writefile({
-      "#!/bin/sh",
-      "dir=" .. vim.fn.shellescape(home),
-      'echo "$*" >> "$dir/argv.log"',
-      "echo '{\"data\":{}}'",
-    }, bin .. "/gh")
-    vim.fn.system({ "chmod", "+x", bin .. "/gh" })
-    return {
-      bin = bin,
-      argv = function()
-        local ok, lines = pcall(vim.fn.readfile, home .. "/argv.log")
-        return ok and lines or {}
-      end,
-    }
-  end
-
-  it("gr in comments view toggles GitHub thread resolution", function()
-    local gh = fake_gh_resolve(ctx.artifact_root)
-    local saved_path = vim.env.PATH
-    vim.env.PATH = gh.bin .. ":" .. saved_path
-    local R = require("pjollrig.review")
-    local files = make_pairs(1)
-    local record = put_imported(
-      files[1].right,
-      { id = 9001, imported = true, thread_id = 9001, thread_node = "RT_kwDO1", resolved = false, pr = 42 }
-    )
-    assert.is_true(R.start({ files = files, label = "resolve" }))
-
-    to_comments_view(1)
-    assert.is_nil(panel_lines()[1]:find("\u{2713}", 1, true))
-
-    press_in_panel(1, "gr")
-
-    -- The mutation runs through an async vim.system: the argv log, the
-    -- flag flip, and the panel refresh all land in the callback.
-    local store = require("pjollrig.store")
-    vim.wait(2000, function()
-      return store.get(ctx.root, record.id).meta.github.resolved == true
-    end)
-
-    local argv = table.concat(gh.argv(), "\n")
-    assert.is_truthy(argv:find("resolveReviewThread", 1, true))
-    assert.is_truthy(argv:find("RT_kwDO1", 1, true))
-    assert.is_nil(argv:find("unresolveReviewThread", 1, true))
-    assert.is_true(store.get(ctx.root, record.id).meta.github.resolved)
-    assert.is_truthy(panel_lines()[1]:find("\u{2713}", 1, true))
-
-    press_in_panel(1, "gr")
-    vim.wait(2000, function()
-      return store.get(ctx.root, record.id).meta.github.resolved == false
-    end)
-
-    argv = table.concat(gh.argv(), "\n")
-    assert.is_truthy(argv:find("unresolveReviewThread", 1, true))
-    assert.is_false(store.get(ctx.root, record.id).meta.github.resolved)
-    assert.is_nil(panel_lines()[1]:find("\u{2713}", 1, true))
-
-    vim.env.PATH = saved_path
-  end)
-
-  it("gr on a non-imported comment warns", function()
-    local R = require("pjollrig.review")
-    local files = make_pairs(1)
-    assert.is_true(R.start({ files = files, label = "resolve-warn" }))
-    add_comment(files[1].right, "local note")
-
-    local warned
-    local original_notify = vim.notify
-    vim.notify = function(msg, level)
-      if level == vim.log.levels.WARN then
-        warned = msg
-      end
-    end
-    to_comments_view(1)
-    press_in_panel(1, "gr")
-    vim.notify = original_notify
-
-    assert.is_truthy(warned, "expected a WARN")
-  end)
-
-  it("gr on an imported comment without a thread id warns", function()
-    local R = require("pjollrig.review")
-    local files = make_pairs(1)
-    put_imported(files[1].right, { id = 9002, imported = true, thread_id = 9002, pr = 42 })
-    assert.is_true(R.start({ files = files, label = "resolve-no-node" }))
-
-    local warned
-    local original_notify = vim.notify
-    vim.notify = function(msg, level)
-      if level == vim.log.levels.WARN then
-        warned = msg
-      end
-    end
-    to_comments_view(1)
-    press_in_panel(1, "gr")
-    vim.notify = original_notify
-
-    assert.is_truthy(warned, "expected a WARN")
-    assert.is_truthy(
-      warned:find(":PjollrigReview pr", 1, true),
-      "WARN must point at re-running :PjollrigReview pr <n>, got: " .. tostring(warned)
-    )
+    assert.are.equal("", vim.fn.maparg("r", "n"))
+    assert.are.equal("", vim.fn.maparg("gr", "n"))
+    assert.is_true(R.finish())
+    assert.are.equal(1, #calls)
+    assert.are.equal(1, #calls[1].comments)
+    assert.are.equal("local note", calls[1].comments[1].body)
+    local saved = require("pjollrig.store").all(ctx.root)
+    assert.are.equal(1, #saved)
+    assert.are.equal(record.id, saved[1].id)
+    assert.are.same(record.meta, saved[1].meta)
   end)
 
   it("next/prev sync the panel's current-line highlight to the open pair", function()

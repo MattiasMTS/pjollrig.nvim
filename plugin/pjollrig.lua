@@ -94,54 +94,22 @@ vim.api.nvim_create_user_command("PjollrigList", function()
   require("pjollrig.review.panel").open_comments()
 end, {})
 
----Verdict words accepted as the optional second argument of
----`:PjollrigSend github`, mapped to the GitHub review event they pick
----for that send (overriding the sink's configured `event`).
-local send_verdicts = {
-  comment = "COMMENT",
-  approve = "APPROVE",
-  ["request-changes"] = "REQUEST_CHANGES",
-}
-
 vim.api.nvim_create_user_command("PjollrigSend", function(opts)
   local sink = opts.fargs[1]
   local ctx
   if sink == "wezterm" and opts.fargs[2] == "pick" and #opts.fargs == 2 then
     ctx = { pick = true }
   elseif opts.fargs[2] ~= nil then
-    local event = send_verdicts[opts.fargs[2]]
-    if not event then
-      vim.notify(
-        ("pjollrig: unknown verdict %q (expected comment, approve, or request-changes)"):format(opts.fargs[2]),
-        vim.log.levels.ERROR
-      )
-      return
-    end
-    -- A verdict only means something to a sink that consumes ctx.event
-    -- (`spec.accepts_verdict`, e.g. github). Refuse rather than silently
-    -- dropping the verdict and sending anyway. An unregistered sink name
-    -- falls through: dispatch reports its own "unknown sink" error.
-    local spec = require("pjollrig.sinks").get(sink)
-    if spec and not spec.accepts_verdict then
-      vim.notify(
-        ("pjollrig: sink %q does not accept a verdict; drop %q or send to github"):format(sink, opts.fargs[2]),
-        vim.log.levels.ERROR
-      )
-      return
-    end
-    ctx = { event = event }
+    vim.notify("pjollrig: usage: PjollrigSend [sink] (or PjollrigSend wezterm pick)", vim.log.levels.ERROR)
+    return
   end
   require("pjollrig").send(sink, nil, ctx)
 end, {
   nargs = "*",
   complete = function(arglead, cmdline)
-    -- Second argument after `github`: complete the verdict words.
     local sink = cmdline:match("PjollrigSend%s+(%S+)%s")
-    if sink == "wezterm" then
-      return prefix_filter(arglead, { "pick" })
-    end
-    if sink == "github" then
-      return prefix_filter(arglead, { "approve", "comment", "request-changes" })
+    if sink then
+      return sink == "wezterm" and prefix_filter(arglead, { "pick" }) or {}
     end
     return require("pjollrig.sinks").list()
   end,
@@ -284,16 +252,6 @@ end
 -- stub re-invocation path — behaves like :echoerr and is rethrown as
 -- a "Vim:" traceback).
 vim.api.nvim_create_user_command("PjollrigReview", function(opts)
-  -- Bare `pr`: pick an open PR via vim.ui.select, then proceed as if
-  -- `:PjollrigReview pr <n>` was typed. Intercepted BEFORE resolve —
-  -- the git resolver would otherwise try (and fail) to treat "pr" as
-  -- a ref.
-  if #opts.fargs == 1 and opts.fargs[1] == "pr" then
-    require("pjollrig.review.pr_picker").pick(function(number)
-      require("pjollrig.review").start_async({ "pr", number })
-    end)
-    return
-  end
   require("pjollrig.review").start_async(opts.fargs)
 end, {
   nargs = "*",

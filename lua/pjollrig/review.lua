@@ -13,7 +13,7 @@
 -- that is currently open.
 --
 -- A pair with `status = "doc"` has NO baseline (`left` is nil): a
--- document — a plan, a report, a chat turn — reviewed for its own sake.
+-- document — a plan or report — reviewed for its own sake.
 -- It opens plain in one window with prose wrapping, in either diff
 -- mode, and carries no diffstat.
 
@@ -646,9 +646,8 @@ end
 
 ---Land a resolved job's files into the begin()-opened session: build
 ---the session cache, open the first pair, re-render the panel, kick
----the prefetch-enabled tabs, the deferred diffstat fill, and (for pr
----jobs) the post-open GitHub comment import.
----@param job {files: table[], label?: string, sink?: string, ctx?: table, stage_dirs?: string[], github_import?: {root: string, number: string|integer}}
+---custom tabs' prefetch hooks and the deferred diffstat fill.
+---@param job {files: table[], label?: string, sink?: string, ctx?: table, stage_dirs?: string[]}
 local function attach(job)
   session.files = job.files
   session.label = job.label or session.label
@@ -670,31 +669,10 @@ local function attach(job)
   M.open_pair(1)
   -- Re-render the (already open) panel now that the rows exist.
   require("pjollrig.review.panel").open()
-  -- Session and panel both exist now: eagerly kick off the fetches of
-  -- prefetch-enabled panel tabs (PR header, CI checks) so their first
-  -- show renders data instead of a loading row. Gated by
-  -- `review.panel.prefetch`; the fetches are async and never block start.
+  -- Opted-in custom tabs may prefetch after the first pair is on screen.
   require("pjollrig.review.panel").prefetch()
   -- Per-pair diffstat: deferred chunks + one refresh (see M.diffstat).
   fill_diffstat(session)
-  -- PR comment import used to block the resolver; it runs AFTER the
-  -- session is on screen now. The records land through the store, and
-  -- the completion refresh reconciles the panel's counts/rows (the
-  -- import notifies its own summary).
-  local import_spec = job.github_import
-  if import_spec then
-    local s = session
-    vim.schedule(function()
-      if session ~= s then
-        return
-      end
-      require("pjollrig.review.import").github_pr_async(import_spec.root, import_spec.number, function()
-        if session == s then
-          require("pjollrig.review.panel").refresh()
-        end
-      end)
-    end)
-  end
 end
 
 ---Start a review session over explicit file pairs. `stage_dirs` lists
@@ -717,8 +695,7 @@ function M.start(opts)
 end
 
 ---Delete the staging dirs a stopped session OWNED. Buffers first:
----deleted-file pairs opened the LEFT staged file, and a
----pr-head-not-checked-out session opens staged RIGHT files as plain
+---deleted-file pairs or external jobs may open staged files as plain
 ---file buffers — wipe anything still pointing into a stage dir so no
 ---buffer is left naming a removed file. Comments recorded on those
 ---staged URIs live in the session-scope store and simply remain
@@ -823,7 +800,7 @@ end
 function M.start_async(fargs, opts)
   fargs = fargs or {}
   -- Placeholder label for the resolving shell; attach() replaces it
-  -- with the resolver's real label (e.g. `pr 42: <title>`).
+  -- with the resolver's real label.
   local label = #fargs > 0 and table.concat(fargs, " ") or "HEAD"
   local gen = begin(label)
   require("pjollrig.review.sources").resolve_async(fargs, opts or {}, function(job, err)
@@ -848,8 +825,8 @@ function M.start_async(fargs, opts)
 end
 
 ---Count the session's pending comments without side effects. Records
----imported FROM GitHub (meta.github.imported) are excluded: finish()
----must never echo GitHub's own comments back through the sink. The
+---previously imported from GitHub are excluded: old stored imports
+---must not be echoed back as new local feedback. The
 ---uris/root filters come from the session cache (see
 ---build_session_cache).
 local function pending_comments()
@@ -863,7 +840,7 @@ end
 ---(async, through pjollrig.send — dispatch failures notify from its
 ---callback). Pure up to that dispatch: the pre-flight failures below
 ---return instead of notifying; the command layer
----(`:PjollrigReviewFinish`, the PR tab's `S`) notifies on false, and
+---(`:PjollrigReviewFinish`) notifies on false, and
 ---the VimLeavePre autoflush pre-checks session/sink/pending so its
 ---direct call cannot fail.
 ---@param opts? {sink?: string} override the session's sink for this send

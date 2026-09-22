@@ -42,8 +42,7 @@
 -- stay hardcoded; registered tabs render their rows through the same
 -- set_lines+extmark pass and store row `data` in line_data under
 -- `kind = "custom:<name>"`. The registry mirrors sources.lua/sinks:
--- validated spec table, `_reset_tabs()` test seam; builtin tab modules
--- load through review/tabs/init.lua on the first panel open.
+-- validated spec table and `_reset_tabs()` test seam.
 --
 -- All rendering goes through one idempotent `render()` from
 -- review.state() + the store: buffer lines plus extmarks in the
@@ -220,7 +219,7 @@ local active_tab_keys = {}
 ---is deliberately NOT reserved: custom rows need an activation key, so
 ---the panel's own <CR> map routes to the tab's handler instead.
 local RESERVED_KEYS = {}
-for _, lhs in ipairs({ "H", "L", "<Esc>", "q", "dd", "ce", "u", "<C-r>", "r", "gr", "v", "t", "za", "o" }) do
+for _, lhs in ipairs({ "H", "L", "<Esc>", "q", "dd", "ce", "u", "<C-r>", "v", "t", "za", "o" }) do
   RESERVED_KEYS[vim.keycode(lhs)] = lhs
 end
 
@@ -785,7 +784,7 @@ end
 ---Comments view rows, one per record in canonical `uri → line → id`
 ---order: `[✓ ][x] path:lnum  first body line`. Resolved records keep
 ---the existing conventions — `[x]` for locally-resolved, a `✓` prefix
----for GitHub-resolved threads (meta.github.resolved, toggled via `gr`)
+---for legacy imported resolved threads (meta.github.resolved)
 ---— and both render dimmed.
 ---@param records? table[] pre-fetched records for the CURRENT filter
 ---(uri-scoped when `file_filter` is set); fetched here when nil.
@@ -1507,33 +1506,6 @@ local function setup_panel_keymaps(bufnr)
     end
   end, "Pjollrig review: toggle directory collapse")
 
-  -- `r` in comments view replies to an imported GitHub comment: opens
-  -- the comment editor; the reply posts to the comment's thread on the
-  -- next github send. Falls through to the default `r` elsewhere.
-  map("r", function()
-    if current_view ~= "comments" then
-      feed_default("r")
-      return
-    end
-    local locator = record_locator_at_cursor()
-    if locator then
-      require("pjollrig.review.github").reply(locator)
-    end
-  end, "Pjollrig review: reply to imported GitHub comment")
-
-  -- `gr` in comments view toggles GitHub thread resolution for an
-  -- imported comment. Falls through to the default `gr` elsewhere.
-  map("gr", function()
-    if current_view ~= "comments" then
-      feed_default("gr")
-      return
-    end
-    local locator = record_locator_at_cursor()
-    if locator then
-      require("pjollrig.review.github").toggle_resolve(locator)
-    end
-  end, "Pjollrig review: toggle GitHub thread resolution")
-
   -- <Esc> in the comments view — or on a registered tab — returns to
   -- the Files tab (clearing any file filter, keeping its layout); in
   -- the Files tab — and in project mode, which has no Files tab — it
@@ -1738,10 +1710,6 @@ end
 ---@param comment_records? table[] pre-fetched records: sizes the
 ---bottom split by row count and feeds the initial render (project mode).
 local function open_window(comment_records)
-  -- Builtin tabs register here — the panel's setup path — because the
-  -- panel is the only surface that renders them; the loader's own
-  -- guard makes the per-open call idempotent.
-  require("pjollrig.review.tabs").setup()
   setup_highlights()
 
   -- A stale buffer holding the panel's name (e.g. left from an aborted

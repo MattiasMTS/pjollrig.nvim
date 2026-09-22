@@ -1415,11 +1415,12 @@ end
 function M.list(filter, opts)
   filter = filter or {}
   opts = opts or {}
-  -- `exclude_imported` drops records imported from an external review
-  -- system (meta.github.imported). Used by review.finish() so GitHub's
-  -- own comments are never echoed back; a plain :PjollrigSend still
-  -- includes them (explicit user action).
-  local is_import = filter.exclude_imported and require("pjollrig.review.import").is_import or nil
+  -- Preserve the send filter for imports already present in existing stores.
+  local function is_import(record)
+    local meta = type(record.meta) == "table" and record.meta or nil
+    local gh = meta and type(meta.github) == "table" and meta.github or nil
+    return gh ~= nil and gh.imported == true
+  end
   if opts.sync ~= false then
     sync_all_loaded_positions()
   end
@@ -1473,7 +1474,7 @@ function M.list(filter, opts)
       if filter.author and r.author ~= filter.author then
         return false
       end
-      if is_import and is_import(r) then
+      if filter.exclude_imported and is_import(r) then
         return false
       end
       if filter.orphaned then
@@ -1538,18 +1539,8 @@ function M.send(sink_name, filter, ctx, opts)
       return
     end
     if sink and sink.clear_on_success and #records > 0 then
-      -- A sink may deliver only a SUBSET of the batch (github diverts
-      -- records with no repo-relative path and records imported from
-      -- GitHub out of the payload) yet still report overall success.
-      -- Such sinks declare `spec.sent_marker`: the `meta` key they
-      -- stamp on every record they actually delivered (github's
-      -- `mark_sent` sets `meta.github_sent` on the very record tables
-      -- dispatched here, so the marker is visible in-memory by the
-      -- time this callback runs). Clear only marked records; undelivered
-      -- ones must survive. Records marked by an EARLIER send also carry
-      -- the marker and are cleared deliberately — they were delivered
-      -- then, so clearing completes that hand-off. Sinks without
-      -- `sent_marker` keep the whole-batch behavior.
+      -- Custom sinks may deliver only part of a batch and stamp a
+      -- sent_marker on delivered records. Never clear the undelivered ones.
       local marker = sink.sent_marker
       -- Reuse `M.delete` so each record goes through the full lifecycle
       -- — store.remove + save and one `User PjollrigDeleted` per record
@@ -1587,10 +1578,8 @@ end
 ---Optional delivery-contract fields consumed by `M.send`:
 ---`sent_marker` (string) names the `meta` key the sink stamps on each
 ---record it actually delivered — with `clear_on_success`, only marked
----records are cleared. `accepts_verdict` (boolean) advertises that the
----sink consumes a `:PjollrigSend <sink> <verdict>` argument (ctx.event);
----the command layer rejects verdicts for sinks without it.
----@param spec {name: string, send: fun(comments: table, ctx: table, cb: fun(ok, err)), format?: fun(c): string, validate?: fun(ctx): boolean, string?, sent_marker?: string, accepts_verdict?: boolean}
+---records are cleared.
+---@param spec {name: string, send: fun(comments: table, ctx: table, cb: fun(ok, err)), format?: fun(c): string, validate?: fun(ctx): boolean, string?, sent_marker?: string}
 function M.register_sink(spec)
   return require("pjollrig.sinks").register(spec)
 end

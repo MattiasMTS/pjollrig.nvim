@@ -127,7 +127,6 @@ describe("pjollrig sink helpers", function()
     require("pjollrig.sinks")._reset()
     local bin = H.fake_cmux(ctx)
     require("pjollrig.sinks").setup({
-      github = false,
       clipboard = {
         pre_text = "clipboard header",
         post_text = "clipboard footer",
@@ -706,7 +705,6 @@ describe("pjollrig sink helpers", function()
     require("pjollrig.sinks")._reset()
     require("pjollrig.sinks").setup({
       clipboard = false,
-      github = false,
       cmux = {
         enabled = true,
         command = ctx.state .. "/missing-cmux",
@@ -724,7 +722,6 @@ describe("pjollrig sink helpers", function()
     require("pjollrig.sinks")._reset()
     require("pjollrig.sinks").setup({
       clipboard = false,
-      github = false,
       cmux = false,
     })
 
@@ -892,8 +889,8 @@ describe("pjollrig sink helpers", function()
   it("re-registers builtins on repeated setup without duplicate errors", function()
     local sinks = require("pjollrig.sinks")
     sinks._reset()
-    sinks.setup({ github = false, cmux = false })
-    sinks.setup({ github = false, cmux = false })
+    sinks.setup({ cmux = false })
+    sinks.setup({ cmux = false })
 
     assert.are.same({ "clipboard" }, sinks.list())
   end)

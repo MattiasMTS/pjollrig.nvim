@@ -74,6 +74,26 @@ describe("all-files review", function()
     assert.is_truthy(vim.wo.winbar:find("b.lua", 1, true))
   end)
 
+  it("uses one highlight range per changed run without spilling into context or the next file", function()
+    start({
+      pair("a.lua", { "context", "old-a", "old-b", "tail" }, { "context", "new-a", "new-b", "tail" }),
+      pair("b.lua", {}, { "added-a", "added-b", "added-c" }, "A"),
+    })
+    local spans = {}
+    local marks =
+      vim.api.nvim_buf_get_extmarks(buf, vim.api.nvim_get_namespaces().pjollrig_review_all, 0, -1, { details = true })
+    for _, mark in ipairs(marks) do
+      spans[#spans + 1] = { mark[2] + 1, mark[4].end_row + 1, mark[4].line_hl_group }
+    end
+    assert.are.same({
+      { row("a.lua"), row("a.lua"), "Title" },
+      { row("- old-a"), row("- old-b"), "DiffDelete" },
+      { row("+ new-a"), row("+ new-b"), "DiffAdd" },
+      { row("b.lua"), row("b.lua"), "Title" },
+      { row("+ added-a"), row("+ added-c"), "DiffAdd" },
+    }, spans)
+  end)
+
   it("moves across hunks and file boundaries with wrap", function()
     start({ pair("a.lua", { "old-a" }, { "new-a" }), pair("b.lua", { "old-b" }, { "new-b" }) })
     assert.are.equal(row("- old-a"), vim.api.nvim_win_get_cursor(0)[1])

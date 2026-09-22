@@ -21,7 +21,6 @@ local function setup_env(opts)
     sinks = {
       clipboard = false,
       cmux = false,
-      github = false,
       socket = false,
     },
   }

@@ -112,7 +112,7 @@ describe("pjollrig mouse comments", function()
     for _, setting in ipairs({ "", "nv", "a" }) do
       child.o.mouse = setting
       child.lua(
-        [[require("pjollrig").setup({store={dir=ctx.state, poll_interval_ms=0}, sinks={clipboard=false, cmux=false, wezterm=false, github=false, socket=false}, ui={enable_mouse=false}})]]
+        [[require("pjollrig").setup({store={dir=ctx.state, poll_interval_ms=0}, sinks={clipboard=false, cmux=false, wezterm=false, socket=false}, ui={enable_mouse=false}})]]
       )
       assert.are.equal(setting, child.o.mouse)
     end
@@ -435,6 +435,31 @@ describe("pjollrig mouse comments", function()
     end
     assert.are.equal(1, single)
     child.lua([[require("pjollrig.review").stop()]])
+  end)
+
+  it("all-files highlight ranges color every changed row without leaking into context", function()
+    local attrs = child.lua([[
+      require("pjollrig.config").get().review.file_mode = "all"
+      local left = ctx.artifact_root .. "/baseline.lua"
+      vim.fn.writefile({"first line", "old-a", "old-b", "fourth line"}, left)
+      vim.api.nvim_set_hl(0, "DiffAdd", {bg="#112233"})
+      vim.api.nvim_set_hl(0, "DiffDelete", {bg="#332211"})
+      assert(require("pjollrig.review").start({files={{left=left, right=ctx.root .. "/mouse.lua", path="mouse.lua", status="M"}}}))
+      local buf, win = vim.api.nvim_get_current_buf(), vim.api.nvim_get_current_win()
+      assert(vim.wait(2000, function() return vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1] ~= "Loading all files…" end))
+      vim.cmd("redraw")
+      local attrs = {}
+      for i, line in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
+        for _, text in ipairs({"old-a", "old-b", "second line", "third line", "fourth line"}) do
+          if line:find(text, 1, true) then attrs[text] = vim.fn.screenattr(vim.fn.screenpos(win, i, 1).row, 80) end
+        end
+      end
+      return attrs
+    ]])
+    assert.are.equal(attrs["old-a"], attrs["old-b"])
+    assert.are.equal(attrs["second line"], attrs["third line"])
+    assert.are_not.equal(attrs["old-b"], attrs["second line"])
+    assert.are_not.equal(attrs["third line"], attrs["fourth line"])
   end)
 
   it("current-buffer mappings also suppress buttons on inactive windows", function()

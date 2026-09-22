@@ -1,7 +1,5 @@
 -- :PjollrigReview end-to-end latency: the command returns within a
--- frame while SLOW subprocesses (a sleeping git/gh wrapper on PATH)
--- resolve in the background, and the PR comment import lands AFTER the
--- session is already on screen.
+-- frame while slow local Git subprocesses resolve in the background.
 
 local H = require("helpers")
 
@@ -91,80 +89,6 @@ describe(":PjollrigReview async command", function()
     -- The first pair is on screen (worktree side focused).
     assert.are.equal(state.files[1].right, vim.api.nvim_buf_get_name(vim.api.nvim_get_current_buf()))
     assert.is_truthy(panel_lines()[1]:find("slow.lua", 1, true))
-  end)
-
-  it("pr flow: the session opens before the comment import lands", function()
-    local root, git = H.git_repo(ctx, { ["a.lua"] = { "return 1", "-- two" } })
-    local base_oid = vim.trim(git("rev-parse", "HEAD").stdout)
-    git("checkout", "-q", "-b", "pr-branch")
-    vim.fn.writefile({ "return 2", "-- two" }, root .. "/a.lua")
-    git("commit", "-aqm", "pr change")
-    local head_oid = vim.trim(git("rev-parse", "HEAD").stdout)
-
-    -- gh whose metadata endpoints answer fast but whose comment/thread
-    -- API sleeps: the import MUST NOT hold the session closed.
-    local home = ctx.artifact_root .. "/gh-slow"
-    local bin = home .. "/bin"
-    vim.fn.mkdir(bin, "p")
-    vim.fn.writefile({
-      vim.json.encode({
-        {
-          id = 7001,
-          path = "a.lua",
-          line = 2,
-          body = "late comment",
-          html_url = "https://example.test/r/7001",
-          user = { login = "octocat" },
-        },
-      }),
-    }, home .. "/comments.json")
-    vim.fn.writefile({
-      vim.json.encode({ data = { repository = { pullRequest = { reviewThreads = { nodes = {} } } } } }),
-    }, home .. "/threads.json")
-    vim.fn.writefile({
-      "#!/bin/sh",
-      "dir=" .. vim.fn.shellescape(home),
-      'if [ "$1 $2" = "pr view" ]; then',
-      ('  echo \'{"baseRefOid":"%s","headRefOid":"%s","title":"Slow import"}\';'):format(base_oid, head_oid),
-      'elif [ "$1 $2" = "repo view" ]; then',
-      '  echo \'{"nameWithOwner":"acme/widgets"}\';',
-      'elif [ "$1 $2" = "api graphql" ]; then',
-      "  sleep 0.5;",
-      '  cat "$dir/threads.json";',
-      'elif [ "$1" = "api" ]; then',
-      "  sleep 0.5;",
-      "  printf '['; cat \"$dir/comments.json\"; printf ']';",
-      "else",
-      "  exit 2;",
-      "fi",
-    }, bin .. "/gh")
-    vim.fn.system({ "chmod", "+x", bin .. "/gh" })
-    vim.env.PATH = bin .. ":" .. saved_path
-    vim.cmd.cd(root)
-
-    vim.cmd("PjollrigReview pr 42")
-    wait_attached()
-
-    -- Attached with the pair on screen, import still in flight.
-    local R = require("pjollrig.review")
-    local state = assert(R.state())
-    assert.are.equal("pr 42: Slow import", state.label)
-    assert.are.equal(1, #state.files)
-    local store = require("pjollrig.store")
-    assert.are.equal(0, #store.all(root), "import blocked the session open")
-
-    -- The comments backfill once the sleeping endpoints answer, and the
-    -- panel's refresh picks the count up.
-    vim.wait(15000, function()
-      return #store.all(root) == 1
-    end, 20)
-    assert.are.equal(1, #store.all(root))
-    assert.are.equal("late comment", store.all(root)[1].body)
-    vim.wait(2000, function()
-      local line = panel_lines()[1] or ""
-      return line:find("1 comments", 1, true) ~= nil
-    end, 20)
-    assert.is_truthy(panel_lines()[1]:find("1 comments", 1, true), "panel never reconciled the imported comment")
   end)
 
   it("a failing resolve notifies ERROR and closes the shell", function()

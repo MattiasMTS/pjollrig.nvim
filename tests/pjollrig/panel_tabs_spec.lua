@@ -85,13 +85,6 @@ end
 describe("pjollrig panel tab registry", function()
   before_each(function()
     ctx = H.setup()
-    -- Flip the builtin loader's once-per-process guard so the panel's
-    -- own tabs.setup() on open cannot register the real builtin tabs
-    -- and collide with this spec's fake "checks" tab (same pattern as
-    -- the sibling tab specs).
-    pcall(function()
-      require("pjollrig.review.tabs").setup()
-    end)
     panel()._reset_tabs()
   end)
   after_each(function()
@@ -143,7 +136,7 @@ describe("pjollrig panel tab registry", function()
 
   it("rejects reserved panel keys in spec.keymaps at register time", function()
     local p = panel()
-    for _, lhs in ipairs({ "H", "L", "<Esc>", "q", "dd", "ce", "u", "<C-r>", "r", "gr", "v", "t", "za", "o" }) do
+    for _, lhs in ipairs({ "H", "L", "<Esc>", "q", "dd", "ce", "u", "<C-r>", "v", "t", "za", "o" }) do
       local ok, err = pcall(p.register_tab, tab_spec({ keymaps = { [lhs] = function() end } }))
       assert.is_false(ok, lhs .. " was not rejected")
       assert.is_truthy(tostring(err):find("reserved", 1, true), tostring(err))
@@ -152,8 +145,8 @@ describe("pjollrig panel tab registry", function()
     local ok, err = pcall(p.register_tab, tab_spec({ keymaps = { ["<esc>"] = function() end } }))
     assert.is_false(ok)
     assert.is_truthy(tostring(err):find("reserved", 1, true), tostring(err))
-    -- <CR> is allowed: custom rows need an activation key.
-    p.register_tab(tab_spec({ keymaps = { ["<CR>"] = function() end } }))
+    -- Activation and the removed GitHub bindings are available to custom tabs.
+    p.register_tab(tab_spec({ keymaps = { ["<CR>"] = function() end, r = function() end, gr = function() end } }))
   end)
 
   it("is re-exported as require('pjollrig').register_review_tab", function()
@@ -400,13 +393,6 @@ end)
 describe("pjollrig panel tab prefetch", function()
   before_each(function()
     ctx = H.setup()
-    -- Flip the builtin loader's once-per-process guard so the panel's
-    -- own tabs.setup() on open cannot register the real builtin tabs
-    -- and collide with this spec's fake "checks" tab (same pattern as
-    -- the sibling tab specs).
-    pcall(function()
-      require("pjollrig.review.tabs").setup()
-    end)
     panel()._reset_tabs()
   end)
   after_each(function()
@@ -489,13 +475,6 @@ end)
 describe("pjollrig panel spinner ticker", function()
   before_each(function()
     ctx = H.setup()
-    -- Flip the builtin loader's once-per-process guard so the panel's
-    -- own tabs.setup() on open cannot register the real builtin tabs
-    -- and collide with this spec's fake "checks" tab (same pattern as
-    -- the sibling tab specs).
-    pcall(function()
-      require("pjollrig.review.tabs").setup()
-    end)
     panel()._reset_tabs()
   end)
   after_each(function()
@@ -608,13 +587,6 @@ end)
 describe("pjollrig panel tab registry in project mode", function()
   before_each(function()
     ctx = H.setup()
-    -- Flip the builtin loader's once-per-process guard so the panel's
-    -- own tabs.setup() on open cannot register the real builtin tabs
-    -- and collide with this spec's fake "checks" tab (same pattern as
-    -- the sibling tab specs).
-    pcall(function()
-      require("pjollrig.review.tabs").setup()
-    end)
     panel()._reset_tabs()
   end)
   after_each(function()
@@ -650,59 +622,5 @@ describe("pjollrig panel tab registry in project mode", function()
     assert.are.same({ "one check row" }, panel_lines())
     press_in_panel(1, "L") -- wraps back to comments
     assert.is_truthy(winbar():find("%#PjollrigPanelTabActive#Comments", 1, true), winbar())
-  end)
-end)
-
-describe("pjollrig builtin tabs loader", function()
-  before_each(function()
-    ctx = H.setup()
-    -- Flip the builtin loader's once-per-process guard so the panel's
-    -- own tabs.setup() on open cannot register the real builtin tabs
-    -- and collide with this spec's fake "checks" tab (same pattern as
-    -- the sibling tab specs).
-    pcall(function()
-      require("pjollrig.review.tabs").setup()
-    end)
-    panel()._reset_tabs()
-  end)
-  after_each(function()
-    pcall(function()
-      require("pjollrig.review").stop()
-    end)
-    package.preload["pjollrig.review.tabs.github"] = nil
-    package.loaded["pjollrig.review.tabs.github"] = nil
-    panel()._reset_tabs()
-    H.teardown(ctx)
-    ctx = nil
-  end)
-
-  it("tolerates the (not yet existing) builtin tab modules silently", function()
-    local tabs = require("pjollrig.review.tabs")
-    tabs._reset()
-    tabs.setup() -- neither module exists: must not error
-  end)
-
-  it("calls setup() on each builtin tab module that loads", function()
-    package.preload["pjollrig.review.tabs.github"] = function()
-      return {
-        setup = function()
-          panel().register_tab({
-            name = "github",
-            title = "GitHub",
-            build = function()
-              return {}
-            end,
-          })
-        end,
-      }
-    end
-    local tabs = require("pjollrig.review.tabs")
-    tabs._reset()
-    tabs.setup()
-    -- Registered: a duplicate registration now errors.
-    local ok = pcall(panel().register_tab, { name = "github", title = "G", build = function() end })
-    assert.is_false(ok, "loader did not register the stubbed builtin tab")
-    -- Idempotent: the panel calls setup() on every open.
-    tabs.setup()
   end)
 end)

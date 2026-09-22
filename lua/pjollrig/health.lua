@@ -226,17 +226,12 @@ function M.check()
   if vim.fn.executable("git") == 1 then
     health.ok("git is available")
   else
-    health.warn("git is not available; :PjollrigReview needs git for ref/pr resolvers")
+    health.warn("git is not available; :PjollrigReview needs git for ref reviews")
   end
   if vim.fn.executable("tar") == 1 then
     health.ok("tar is available")
   else
     health.warn("tar is not available; review baseline staging degrades or fails without it")
-  end
-  if vim.fn.executable("gh") == 1 then
-    health.ok("gh CLI is available")
-  else
-    health.info("gh CLI not found; :PjollrigReview pr <n> is disabled")
   end
 end
 

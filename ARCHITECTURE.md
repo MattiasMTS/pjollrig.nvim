@@ -48,9 +48,8 @@ lua/pjollrig/review/panel.lua   the comments/review panel (tabs, rows, project m
 lua/pjollrig/review/git.lua     git plumbing (rev-parse, merge-base, changed files, staging)
 lua/pjollrig/review/inline.lua  unified-mode diff paint (virtual lines, folds, hunk nav)
 lua/pjollrig/review/all.lua     continuous all-files view, source row mapping, snapshot guards
-lua/pjollrig/review/sources.lua resolver registry (dirs, git ref, pr via gh CLI, chat)
-lua/pjollrig/review/chat.lua    Claude Code transcript reader behind the `chat` resolver
-lua/pjollrig/sinks/             sink registry and bundled sinks (clipboard, cmux, wezterm, github, socket)
+lua/pjollrig/review/sources.lua local resolver registry (dirs, git ref)
+lua/pjollrig/sinks/             sink registry and bundled sinks (clipboard, cmux, wezterm, socket)
 ```
 
 `init.lua` lazy-requires most modules so command/key based lazy-loading has
@@ -366,16 +365,14 @@ Rows render through the panel's existing set_lines+extmark pass:
 panel's per-row `line_data` under `kind = "custom:<name>"`. An
 unavailable tab is skipped by H/L and absent from the winbar
 (availability is re-evaluated per render/switch). The panel's own keys
-(`H` `L` `<Esc>` `q` `dd` `ce` `u` `<C-r>` `r` `gr` `v` `t` `za` `o`)
+(`H` `L` `<Esc>` `q` `dd` `ce` `u` `<C-r>` `v` `t` `za` `o`)
 are reserved — registering a keymap over one errors; `<CR>` is allowed
 (custom rows need activation) and is routed by the panel's own map.
 `ctx.refresh()` re-renders the open panel — whatever tab is current —
 and is safe to call from `vim.schedule` after an async fetch; it no-ops
 once the panel is closed. Registering while a panel is open takes
-effect on the next render. Bundled tabs load through
-`lua/pjollrig/review/tabs/init.lua` on the first panel open
-(pcall-required, so an absent module is skipped silently);
-`panel._reset_tabs()` is the test seam.
+effect on the next render. Only Files/Comments ship as builtins;
+custom tabs register explicitly. `panel._reset_tabs()` is the test seam.
 
 ## Review Mode
 
@@ -471,32 +468,14 @@ worktree right). One active session at a time, in its own tab page.
 - Turns `:PjollrigReview` arguments into staged file pairs.
 - Builtin resolvers: `<dirL> <dirR>` (walks dirR, pairs by rel-path, content
   diff), `<git-ref>` (merge-base vs HEAD, shows only your changes), bare
-  (defaults to `HEAD`), `pr <n>` (via `gh pr view --json`, shells to gh CLI),
-  `chat [all|<n>]` (a Claude Code assistant turn as a markdown document).
-- `chat` (`lua/pjollrig/review/chat.lua`) is Claude-Code-specific and opt-in
-  by presence of `~/.claude/projects/<cwd-slug>/*.jsonl` (slug = the cwd
-  with every non-alphanumeric byte replaced by `-`); read-only and
-  best-effort — a missing dir or an unrecognized event shape fails the
-  resolve with a clear message. Sessions are listed by mtime (title from
-  the last `ai-title` event, else the first prompt's first line, else the
-  id); a turn is a run of consecutive `assistant` events ended by ANY
-  `user` event (tool results included), text blocks joined with blank
-  lines, sidechain events skipped, turns under 3 lines / 120 chars
-  dropped, and the kept turns numbered newest-first. Scans are linear and
-  prefix-filtered (`string.find` for the `"type":"…"` marker before any
-  json-decode) since transcripts run to many MB. The picked turn is
-  written to `stdpath("cache")/manicule/chat/<id8>-turn-<n>.md` with a
-  3-line comment header and paired with an empty staged left (`A`) in an
-  owned stage dir. Its `vim.ui.select` pickers run inside its own
-  `resolve_async` chain (the scan starts in a scheduled step, the picker
-  callbacks continue it), so they open over the already-visible review
-  shell without registry changes; cancelling a picker fails the resolve.
+  (defaults to `HEAD`). No builtin resolver performs network calls or reads
+  agent transcript files.
 - `register(resolver)` prepends to registry → user resolvers shadow builtins.
 - All resolvers return `{files: [{left, right, status, path}], label}`.
 - Two entry points share the registry. `resolve(fargs, opts)` blocks until
   the job is staged (tests, external callers). `resolve_async(fargs, opts,
   cb)` — the `:PjollrigReview` path — returns immediately and fires `cb(job,
-  err)` on the main loop: the builtin git/pr resolvers run as spawn+callback
+  err)` on the main loop: the builtin Git resolver runs as spawn+callback
   continuations, and a resolver registered without its optional
   `resolve_async` runs its sync `resolve` inside one scheduled step. The
   command layer pairs it with `review.start_async`, which opens the review
@@ -518,22 +497,12 @@ worktree right). One active session at a time, in its own tab page.
   `stage_baseline_async`, `materialize_async`) whose callback fires on the
   main loop. Custom resolvers compose these instead of shelling out to git
   themselves.
-- `pr <n>` with the head checked out also imports existing PR review comments
-  (`lua/pjollrig/review/import.lua`): `gh api .../pulls/<n>/comments --paginate`
-  → project records with `meta.github = {id, url, imported = true}`. Best-effort
-  (failure → WARN, review still opens), deduped on `meta.github.id`, skipped
-  entirely on the both-sides-staged path. On the async path the import runs
-  AFTER the session is on screen (`import.github_pr_async`, kicked by
-  `review.start_async` via the job's `github_import` marker; one panel
-  refresh reconciles the counts when it lands); the sync `sources.resolve`
-  still imports before returning. Imported records are excluded from
-  `finish()` (`M.list`'s `exclude_imported` filter) and skipped by the github
-  sink so GitHub's own comments are never echoed back.
-
-**GitHub sink** (`lua/pjollrig/sinks/github.lua`): posts the batch as a PR
-review via `gh api` (PR from `ctx.pr` or `gh pr view`, repo from
-`gh repo view`; argv-only, JSON body via `--input` temp file; registers only
-when `gh` is executable).
+- Previously imported records remain in existing stores. Their origin badges
+  and `exclude_imported` send filter are retained for compatibility, without
+  loading any GitHub integration or making network requests.
+- GitHub and transcript integrations are deferred; see
+  [deferred features](docs/deferred-features.md). Older documents under
+  `docs/superpowers/` are historical plans, not current feature contracts.
 
 **Socket sink** (`lua/pjollrig/sinks/socket.lua`):
 - Generic JSONL-over-unix-socket transport; bundled, enabled by default.
@@ -570,9 +539,7 @@ Mocks are avoided except for costly or external systems.
 
 - Hosted storage or network sync.
 - Multi-user realtime collaboration.
-- Threads, replies, or reactions in the core record model. GitHub thread
-  interactions (replies, resolve/unresolve) exist, but they live entirely in
-  the sink/meta layer (`meta.github`, `meta.github_reply`) — the record
-  schema itself stays flat and host-agnostic.
+- Threads, replies, or reactions in the core record model. The record schema
+  stays flat and host-agnostic; any future integration belongs in the sink/meta layer.
 - A pluggable render backend.
 - Fuzzy re-anchoring by line text.

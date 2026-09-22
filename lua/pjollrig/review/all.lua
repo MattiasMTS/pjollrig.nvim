@@ -402,16 +402,23 @@ function M.refresh()
       vim.schedule(step)
       return
     end
+    -- ponytail: final buffer/fold refresh scales with all rows; virtualize sections if huge reviews need it.
     a.lines, a.rows, a.sections, a.hunks = model.lines, model.rows, model.sections, model.hunks
     vim.bo[a.buf].modifiable = true
     vim.api.nvim_buf_set_lines(a.buf, 0, -1, false, a.lines)
     vim.bo[a.buf].modifiable = false
     vim.api.nvim_buf_clear_namespace(a.buf, ns, 0, -1)
     local highlights = { header = "Title", ["+"] = "DiffAdd", ["-"] = "DiffDelete" }
-    for row, entry in ipairs(a.rows) do
-      local hl = highlights[entry.kind]
+    local row = 1
+    while row <= #a.rows do
+      local first, kind = row, a.rows[row].kind
+      repeat
+        row = row + 1
+      until not a.rows[row] or a.rows[row].kind ~= kind
+      local hl = highlights[kind]
       if hl then
-        vim.api.nvim_buf_set_extmark(a.buf, ns, row - 1, 0, { line_hl_group = hl })
+        -- line_hl_group includes the end row: one mark per run, not per line.
+        vim.api.nvim_buf_set_extmark(a.buf, ns, first - 1, 0, { end_row = row - 2, line_hl_group = hl })
       end
     end
     a.ready = true

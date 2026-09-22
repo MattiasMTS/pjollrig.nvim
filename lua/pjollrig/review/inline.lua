@@ -18,8 +18,7 @@
 --   * unchanged regions fold away, leaving hunks + context on screen
 --
 -- The buffer is still the file. Comment anchoring, extmark drift,
--- `line_span`, GitHub's `side = "RIGHT"` — all of it keeps working with
--- zero translation. The one thing this view cannot do is put the cursor
+-- and `line_span` keep working with zero translation. The one thing this view cannot do is put the cursor
 -- on a removed line, so removed lines are not commentable; that matches
 -- split mode, where the baseline side is `is_writable = false`.
 

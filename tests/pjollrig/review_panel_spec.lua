@@ -161,7 +161,7 @@ describe("pjollrig review panel substrate", function()
         by_lhs[map.lhs:lower()] = true
       end
     end
-    for _, lhs in ipairs({ "<cr>", "o", "v", "t", "r", "gr", "za", "<esc>", "h", "l", "dd", "ce", "u", "<c-r>" }) do
+    for _, lhs in ipairs({ "<cr>", "o", "v", "t", "za", "<esc>", "h", "l", "dd", "ce", "u", "<c-r>" }) do
       assert.is_true(by_lhs[lhs] == true, "missing panel keymap " .. lhs)
     end
   end)

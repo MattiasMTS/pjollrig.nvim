@@ -12,7 +12,6 @@ local builtin_integrations = {
   clipboard = "pjollrig.sinks.clipboard",
   cmux = "pjollrig.sinks.cmux",
   wezterm = "pjollrig.sinks.wezterm",
-  github = "pjollrig.sinks.github",
   socket = "pjollrig.sinks.socket",
 }
 
@@ -21,7 +20,7 @@ local builtin_integrations = {
 ---Errors when a sink with the same name is already registered (mirrors
 ---`panel.register_tab`): a user sink can never silently clobber a builtin
 ---or another user sink. To replace a builtin, disable it in config first
----(e.g. `sinks = { github = false }`). `M.setup` re-registers builtins
+---(e.g. `sinks = { clipboard = false }`). `M.setup` re-registers builtins
 ---safely because it clears the builtin names before registering them.
 ---@param spec {name: string, send: fun(comments, ctx, cb), type?: string, label?: string, description?: string, pre_text?: string, post_text?: string, format?: fun(c): string, validate?: fun(ctx): boolean, string?, health?: fun(): table?, clear_on_success?: boolean, hidden?: boolean}
 ---

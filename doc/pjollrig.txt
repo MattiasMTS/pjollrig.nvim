@@ -208,13 +208,25 @@ All keys are optional.
 `ui.opacity` is fractional float transparency: `0` is opaque, `0.5` is half
 transparent, `0.99` is 99% transparent, and `1` is fully transparent.
 Pjollrig uses built-in floating lists for send destinations, terminal panes,
-comments, PRs, and chat sessions. Use `j`/`k` or the arrow keys to move,
+and comments. Use `j`/`k` or the arrow keys to move,
 Enter to choose, and Escape or `q` to cancel. Long lists scroll normally.
 The send flow still chooses a sink first, then a pane when needed.
 `ui.sink_picker` can override the sink list (for example,
 `ui = { sink_picker = vim.ui.select }` to use your configured picker).
 
 
+
+LOCAL REVIEW                                    *pjollrig-review-local*
+
+    :PjollrigReview                " uncommitted changes vs HEAD
+    :PjollrigReview main           " changes vs merge-base with a local ref
+    :PjollrigReview <dirA> <dirB>   " compare two directories
+
+Built-in review startup uses local Git only and runs asynchronously.
+GitHub PR loading, threads, reviews/checks tabs, and Claude transcript review
+are deferred (see docs/deferred-features.md). GitHub Actions CI is unchanged.
+Existing comments remain stored; previously imported records remain visible
+but are excluded from :PjollrigReviewFinish to avoid sending them as new feedback.
 
 ALL-FILES REVIEW                                *pjollrig-review-all-files*
 

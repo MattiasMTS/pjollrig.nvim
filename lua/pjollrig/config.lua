@@ -48,7 +48,6 @@ local M = {}
 ---@field clipboard boolean|table Enable the bundled clipboard sink (default true). Accepts `pre_text`, `post_text`, and `clear_on_success` (default true; false keeps comments after a copy).
 ---@field wezterm boolean|table Enable WezTerm when its CLI and current pane are available. Accepts auto_submit (default false), submit_delay_ms, pre_text, post_text, and clear_on_success (default true; false keeps comments after a send).
 ---@field cmux boolean|table Enable the bundled cmux integration (defaults to `{ enabled = true }`). Built-in text sinks accept optional `pre_text` and `post_text` strings. cmux also accepts `auto_submit` and `submit_delay_ms`.
----@field github boolean|table Enable the bundled GitHub PR review sink (default true; registers only when `gh` is executable). Accepts `event` ("COMMENT"|"REQUEST_CHANGES"|"APPROVE"), `clear_on_success`, and `pre_text`.
 ---@field socket boolean|table Enable the bundled socket sink (default true). Accepts `ack_timeout_ms`.
 
 ---@type pjollrig.Config
@@ -112,11 +111,8 @@ local defaults = {
     -- Files tab lists the session pairs: "flat" (default) is one full
     -- path per line, "tree" groups them by directory with collapsible
     -- rollup rows; `t` in the panel toggles it for the session.
-    -- `prefetch` eagerly fetches panel-tab data (PR header, CI checks)
-    -- when a review session opens, so switching to a tab shows results
-    -- instead of a loading row. Set false to keep every tab fetch lazy
-    -- (on first show). Only tabs that opted in (spec.prefetch) are
-    -- affected.
+    -- Custom tabs may opt into prefetch on session open. Set false to
+    -- leave their fetches lazy until first show.
     panel = {
       position = "bottom",
       layout = "flat",
@@ -252,7 +248,6 @@ function M.setup(opts)
     vim.validate("sinks.clipboard", opts.sinks.clipboard, { "boolean", "table" }, true)
     vim.validate("sinks.cmux", opts.sinks.cmux, { "boolean", "table" }, true)
     vim.validate("sinks.wezterm", opts.sinks.wezterm, { "boolean", "table" }, true)
-    vim.validate("sinks.github", opts.sinks.github, { "boolean", "table" }, true)
     vim.validate("sinks.socket", opts.sinks.socket, { "boolean", "table" }, true)
   end
   if opts.review then
