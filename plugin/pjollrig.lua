@@ -9,6 +9,8 @@ api.nvim_create_user_command("Pjollrig", function(o)
     P.loclist(arg == "all")
   elseif sub == "send" then
     require("pjollrig.sinks").send(arg)
+  elseif sub == "review" and arg == "pr" then
+    require("pjollrig.github").start(o.fargs[3])
   elseif sub == "review" then
     require("pjollrig.review").start(arg)
   elseif vim.tbl_contains(subs, sub) then
@@ -24,6 +26,7 @@ end, {
     local sub = line:match("^%S+%s+(%S+)%s")
     local opts = n <= 1 and subs
       or sub == "list" and { "all" }
+      or sub == "review" and n == 2 and { "pr" }
       or sub == "send" and require("pjollrig.sinks").available()
       or {}
     return vim.tbl_filter(function(s)

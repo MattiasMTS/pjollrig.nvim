@@ -128,12 +128,18 @@ if [ -z "$1" ]; then b=$(git rev-parse -q --verify HEAD || echo $2); else b=$(gi
 git update-index -q --refresh >/dev/null; printf '%s\0' "$b"
 git diff-index --name-status -z --no-renames "$b" && printf '?\0' && git ls-files -z --others --exclude-standard]]
 
-function M.start(ref)
-  local cwd = vim.uv.fs_realpath(vim.fn.getcwd()) or "."
-  local root = vim.fs.root(cwd, ".git")
-  root = root and vim.uv.fs_realpath(root)
+function M.root()
+  local root = require("pjollrig").git_root(vim.uv.fs_realpath(vim.fn.getcwd()))
   if not root then
-    return vim.notify("pjollrig: not in a git repo", vim.log.levels.ERROR)
+    vim.notify("pjollrig: not in a git repo", vim.log.levels.ERROR)
+  end
+  return root
+end
+
+function M.start(ref)
+  local root = M.root()
+  if not root then
+    return
   end
   M.git(root, { "sh", "-c", SCRIPT, "sh", ref or "", M.EMPTY }, function(r)
     if r.code ~= 0 then
