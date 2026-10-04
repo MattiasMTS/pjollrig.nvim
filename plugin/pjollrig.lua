@@ -1,5 +1,5 @@
 local api = vim.api
-local subs = { "add", "edit", "delete", "resolve", "list", "send" }
+local subs = { "add", "edit", "delete", "resolve", "list", "send", "review" }
 
 api.nvim_create_user_command("Pjollrig", function(o)
   local P, sub, arg = require("pjollrig"), o.fargs[1] or "list", o.fargs[2]
@@ -9,6 +9,8 @@ api.nvim_create_user_command("Pjollrig", function(o)
     P.loclist(arg == "all")
   elseif sub == "send" then
     require("pjollrig.sinks").send(arg)
+  elseif sub == "review" then
+    require("pjollrig.review").start(arg)
   elseif vim.tbl_contains(subs, sub) then
     P[sub]()
   else
@@ -47,7 +49,14 @@ on("BufReadPost", function(ev)
 end)
 on("BufWinEnter", function(ev)
   require("pjollrig").paint(ev.buf)
+  local review = package.loaded["pjollrig.review"]
+  if review then
+    review.on_enter(ev.buf)
+  end
 end)
+on("BufReadCmd", function(ev)
+  require("pjollrig.review").read(ev.buf)
+end, "pjollrig://*")
 on("BufWritePost", function(ev)
   require("pjollrig").sync(ev.buf)
 end)
