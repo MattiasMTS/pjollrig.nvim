@@ -1,11 +1,10 @@
 # pjollrig.nvim
 
-**Review the diff. Leave a note. Cut the pjoller.**
+**Review the diff. Leave a note. (fixture edit)**
 
 > **pjollrig** · Swedish adjective · roughly **PYOLL-ri(g)**, stress on the
 > first syllable; `pj` sounds like the `py` in “pure”.
 > [Silly, chatty, or prone to idle chatter](https://www.synonymer.se/sv-syn/pjollrig).
-> A playful nod to the northern Swedish *pjoller*: chatter and nonsense.
 
 Persistent review comments for Neovim.
 
