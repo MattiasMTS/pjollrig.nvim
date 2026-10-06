@@ -1,4 +1,4 @@
-*pjollrig.txt*        For Neovim >= 0.12.0        Last change: 2026 October 04
+*pjollrig.txt*        For Neovim >= 0.12.0        Last change: 2026 October 06
 
 ==============================================================================
 Table of Contents                                 *pjollrig-table-of-contents*
