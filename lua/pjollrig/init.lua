@@ -96,21 +96,26 @@ local function locate(r, at, disk)
   return row and row + 1 or r.lnum, not row
 end
 
+---The roots list() reads in the current window: the buffer's own (repo, or a plain file's directory), else the
+---repo of the cwd, else the cwd; plus in-memory roots (scratch buffers).
+local function roots()
+  local a = M.identity(0)
+  local cwd = uv.fs_realpath(vim.fn.getcwd()) or vim.fn.getcwd()
+  local out = { (a and a.root:sub(1, 1) == "/" and a.root) or M.git_root(cwd) or cwd }
+  return vim.list_extend(out, vim.tbl_keys(store.mem))
+end
+
 ---Unresolved records of the current root plus in-memory roots (o.all: resolved too), sorted. lnum/end_lnum are
 ---where each comment is now (see locate), not the stored ones; orphaned marks a comment whose line is gone.
 function M.list(o)
   o = o or {}
-  local a = M.identity(0)
-  local cwd = uv.fs_realpath(vim.fn.getcwd()) or vim.fn.getcwd()
-  local roots = { (a and a.root:sub(1, 1) == "/" and a.root) or M.git_root(cwd) or cwd }
-  vim.list_extend(roots, vim.tbl_keys(store.mem))
   local out, at, disk = {}, {}, {}
   for buf, bm in pairs(marks) do
     for rid, m in pairs(api.nvim_buf_is_loaded(buf) and bm or {}) do
       at[rid] = { buf = buf, id = m.id, dim = m.dim }
     end
   end
-  for _, root in ipairs(roots) do
+  for _, root in ipairs(roots()) do
     for _, r in pairs(store.load(root)) do
       if not r.deleted and (o.all or not r.resolved) and r.body then
         r = vim.tbl_extend("force", r, { root = root })
@@ -385,12 +390,22 @@ function M.resolve(o)
   end)
 end
 
-function M.undo() -- the last edit/delete/resolve, wherever it was made
-  local back = table.remove(M._undo)
-  if not back then
-    return vim.notify("pjollrig: nothing to undo")
+---The last edit/delete/resolve of the comments shown here: in a list, the ones it is built from (its file
+---window's roots). Like Vim's per-buffer undo, a change to another repo's or folder's comments waits for its list.
+function M.undo()
+  local owner = vim.fn.win_gettype() == "loclist" and vim.fn.getloclist(0, { filewinid = 0 }).filewinid or 0
+  local here = {}
+  for _, root in ipairs(owner > 0 and api.nvim_win_call(owner, roots) or roots()) do
+    here[root] = true
   end
-  write(back)
+  for i = #M._undo, 1, -1 do
+    if vim.iter(M._undo[i]):all(function(c)
+      return here[c[1]]
+    end) then
+      return write(table.remove(M._undo, i))
+    end
+  end
+  vim.notify("pjollrig: nothing to undo")
 end
 
 local function title(all)
