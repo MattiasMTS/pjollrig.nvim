@@ -61,18 +61,62 @@ function M.identity(buf)
   return { root = "buffer:" .. buf, path = name ~= "" and name or "[No Name]", side = "new" } -- memory only
 end
 
----Unresolved records of the current root plus in-memory roots (o.all: resolved too), sorted.
+local function place(r, lines) -- stored row if its text still matches, else a unique text match, else nil (dim)
+  if lines[r.lnum] == r.line then
+    return r.lnum - 1
+  end
+  local hits = {}
+  for i, l in ipairs(lines) do
+    hits[#hits + 1] = l == r.line and i - 1 or nil
+  end
+  return #hits == 1 and hits[1] or nil
+end
+
+---Where a record is now, without writing: its mark in a loaded buffer (live: unsaved edits too), else its line
+---placed in the file on disk. orphaned: neither finds the line (rewritten, deleted, ambiguous: the dimmed `?`),
+---so lnum stays where that sign sits. Without a mark, pinned (rev) and unpinned old-side records stay put.
+local function locate(r, at, disk)
+  local m = at[r.id]
+  if m then
+    local pos = api.nvim_buf_get_extmark_by_id(m.buf, ns, m.id, { details = true })
+    if pos[1] and not pos[3].invalid then
+      return pos[1] + 1, m.dim
+    end
+    return r.lnum, true
+  end
+  if r.rev or r.side == "old" or r.root:sub(1, 1) ~= "/" then
+    return r.lnum, false
+  end
+  local f = r.root .. "/" .. r.path
+  if disk[f] == nil then -- one read per file per list
+    local ok, lines = pcall(vim.fn.readfile, f)
+    disk[f] = ok and lines or false
+  end
+  local row = disk[f] and place(r, disk[f])
+  return row and row + 1 or r.lnum, not row
+end
+
+---Unresolved records of the current root plus in-memory roots (o.all: resolved too), sorted. lnum/end_lnum are
+---where each comment is now (see locate), not the stored ones; orphaned marks a comment whose line is gone.
 function M.list(o)
   o = o or {}
   local a = M.identity(0)
   local cwd = uv.fs_realpath(vim.fn.getcwd()) or vim.fn.getcwd()
   local roots = { (a and a.root:sub(1, 1) == "/" and a.root) or M.git_root(cwd) or cwd }
   vim.list_extend(roots, vim.tbl_keys(store.mem))
-  local out = {}
+  local out, at, disk = {}, {}, {}
+  for buf, bm in pairs(marks) do
+    for rid, m in pairs(api.nvim_buf_is_loaded(buf) and bm or {}) do
+      at[rid] = { buf = buf, id = m.id, dim = m.dim }
+    end
+  end
   for _, root in ipairs(roots) do
     for _, r in pairs(store.load(root)) do
       if not r.deleted and (o.all or not r.resolved) and r.body then
-        out[#out + 1] = vim.tbl_extend("force", r, { root = root })
+        r = vim.tbl_extend("force", r, { root = root })
+        local lnum, orphaned = locate(r, at, disk)
+        r.lnum, r.end_lnum, r.orphaned = lnum, lnum + (r.end_lnum or r.lnum) - r.lnum, orphaned or nil
+        out[#out + 1] = r
       end
     end
   end
@@ -83,6 +127,10 @@ function M.list(o)
     return key(x) < key(y)
   end)
   return out
+end
+
+local function label(r) -- list/picker text: first body line; [?]: its line is gone (the dimmed sign)
+  return (r.resolved and "[resolved] " or "") .. (r.orphaned and "[?] " or "") .. r.body:match("[^\n]*")
 end
 
 local function matches(r, a)
@@ -99,17 +147,6 @@ local function deco(r, dim)
     virt_text = { { " " .. r.body:match("[^\n]*"), dim and "Comment" or "DiagnosticVirtualTextInfo" } },
     virt_text_pos = "eol",
   }
-end
-
-local function place(r, lines) -- stored row if its text still matches, else a unique text match, else nil (dim)
-  if lines[r.lnum] == r.line then
-    return r.lnum - 1
-  end
-  local hits = {}
-  for i, l in ipairs(lines) do
-    hits[#hits + 1] = l == r.line and i - 1 or nil
-  end
-  return #hits == 1 and hits[1] or nil
 end
 
 ---Incremental paint: keeps live marks (they track unsaved edits), drops gone ones, places new ones. Never writes.
@@ -288,7 +325,7 @@ local function target(all, o, cb)
   vim.ui.select(recs, {
     prompt = "pjollrig",
     format_item = function(r)
-      return ("%s:%d %s%s"):format(r.path, r.lnum, r.resolved and "[resolved] " or "", r.body:match("[^\n]*"))
+      return ("%s:%d %s"):format(r.path, r.lnum, label(r))
     end,
   }, function(r)
     if r then
@@ -366,7 +403,7 @@ end
 local function rows(all)
   local items = {}
   for _, r in ipairs(M.list({ all = all })) do
-    local text = (r.resolved and "[resolved] " or "") .. r.body:match("[^\n]*")
+    local text = label(r)
     local ud = { pjollrig = { root = r.root, id = r.id } }
     if r.side == "old" and not r.rev then
       items[#items + 1] = {
@@ -390,8 +427,8 @@ end
 
 ---Rebuild every open pjollrig location list in place, keeping its cursor and current entry. Rows are built
 ---from the list's own window, so they come from the same root as when it was opened.
-local function relist()
-  for _, w in ipairs(api.nvim_list_wins()) do
+local function relist(wins)
+  for _, w in ipairs(wins or api.nvim_list_wins()) do
     local ll = vim.fn.win_gettype(w) == "loclist" and vim.fn.getloclist(w, { title = 0, filewinid = 0, idx = 0 })
     if ll and (ll.title == title(false) or ll.title == title(true)) then
       local all = ll.title == title(true)
@@ -413,8 +450,19 @@ function M.refresh() -- after any change: repaint every window, rebuild open lis
   relist()
 end
 
+local group = api.nvim_create_augroup("pjollrig-list", {})
+
 ---The list's own maps: {count}r / {count}dd and visual r / d act on rows, ce edits, u undoes the last change.
+---Stepping into the list rebuilds it: files may have changed since (an agent's edits, another nvim).
 local function keys(buf)
+  api.nvim_clear_autocmds({ group = group, buffer = buf })
+  api.nvim_create_autocmd("BufEnter", {
+    group = group,
+    buffer = buf,
+    callback = function()
+      relist({ api.nvim_get_current_win() })
+    end,
+  })
   local function map(mode, lhs, rhs, desc)
     vim.keymap.set(mode, lhs, rhs, { buffer = buf, silent = true, desc = "pjollrig: " .. desc })
   end

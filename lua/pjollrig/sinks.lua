@@ -3,13 +3,16 @@
 -- is marked resolved. Add a sink: `require("pjollrig.sinks").sinks.x = function(text, opts, cb) end`.
 local M = {}
 
----Markdown payload; bytes match the pre-rewrite formatter for worktree comments.
+---Markdown payload; bytes match the pre-rewrite formatter for worktree comments whose line is still there.
+---A comment whose line is gone (orphaned) says so and quotes the line it was left on.
 function M.format(recs)
   local parts = { ("Pjollrig review (%d comment%s):"):format(#recs, #recs == 1 and "" or "s") }
   for i, r in ipairs(recs) do
     local where = r.lnum .. (r.end_lnum and r.end_lnum ~= r.lnum and ("-" .. r.end_lnum) or "")
     local tag = r.rev and (" (%s @%s)"):format(r.side, r.rev:sub(1, 7)) or r.side == "old" and " (old)" or ""
-    local quote = r.side == "old" and not r.rev and ("\n> " .. r.line) or "" -- unpinned: the line is the anchor
+    tag = tag .. (r.orphaned and " (line changed)" or "")
+    local unpinned = r.side == "old" and not r.rev
+    local quote = (unpinned or r.orphaned) and ("\n> " .. r.line) or "" -- the line is the only anchor left
     parts[#parts + 1] = ("## M%d %s:%s%s%s\n%s"):format(i, r.path, where, tag, quote, r.body)
   end
   return table.concat(parts, "\n\n")
