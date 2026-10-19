@@ -82,6 +82,28 @@ describe("list actions", function()
     assert.are.same({ "pjollrig: nothing to undo" }, notes)
   end)
 
+  it("u only undoes changes to the comments its list shows, like Vim's per-buffer undo", function()
+    open()
+    press("r") -- c1, in this repo
+    local other = H.repo({ ["b.lua"] = { "x" } })
+    api.nvim_set_current_win(src)
+    vim.cmd.edit(other .. "/b.lua") -- the cwd stays in the first repo: the file decides
+    P.add({ body = "in other" })
+    open()
+    press("r")
+    assert.are.same({}, texts())
+    press("u")
+    assert.are.same({ "in other" }, texts())
+    press("u") -- c1's resolve belongs to the first repo's list
+    assert.are.same({ "pjollrig: nothing to undo" }, notes)
+    api.nvim_set_current_win(src)
+    vim.cmd.edit(root .. "/a.lua")
+    open()
+    assert.are.same({ "c2", "c3", "c4" }, texts())
+    press("u")
+    assert.are.same({ "c1", "c2", "c3", "c4" }, texts())
+  end)
+
   it("visual r resolves every row unless all are resolved, then un-resolves them (list all)", function()
     S.patch(root, { { rec("c2").id, { resolved = true } } })
     open(true)
