@@ -1,4 +1,4 @@
-*pjollrig.txt*        For Neovim >= 0.12.0        Last change: 2026 October 06
+*pjollrig.txt*        For Neovim >= 0.12.0        Last change: 2026 October 19
 
 ==============================================================================
 Table of Contents                                 *pjollrig-table-of-contents*
@@ -27,11 +27,16 @@ COMMANDS                                     *pjollrig-pjollrig.nvim-commands*
                                       editor: :w saves, <S-CR> saves and
                                       closes, q discards)
 
-  :Pjollrig edit / delete / resolve   the comment under the cursor, else
-                                      pick one
+  :Pjollrig edit / delete / resolve   the comment under the cursor (in
+                                      the list: the row, or a range of
+                                      rows), else pick one
 
   :Pjollrig list [all]                comments in the location list (all
-                                      includes resolved)
+                                      includes resolved). In the list: r
+                                      toggles resolved, dd deletes, ce
+                                      edits, u undoes; counts and visual
+                                      ranges work, and the list redraws
+                                      in place
 
   :Pjollrig send [sink]               send unresolved comments; delivered
                                       ones are marked resolved
