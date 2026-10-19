@@ -136,6 +136,17 @@ describe("sinks", function()
     assert.are.equal("edited while sending", P.list()[1].body)
   end)
 
+  it("resolve = false: a delivered send keeps the comments unresolved; the default still resolves", function()
+    opts.sinks.clipboard = { resolve = false }
+    comment("KEPT")
+    assert.are.same({ sink = "clipboard", ok = true, count = 1 }, send("clipboard"))
+    assert.are.same({ "Pjollrig review (1 comment):", "", "## M1 a.lua:1", "KEPT" }, clip)
+    assert.are.same({ 1, nil }, { #P.list(), P.list()[1].sent_to })
+    opts.sinks.clipboard.resolve = nil -- read live at send time, like the other sink options
+    assert.are.equal(true, send("clipboard").ok)
+    assert.are.same({ 0, "clipboard" }, { #P.list(), P.list({ all = true })[1].sent_to })
+  end)
+
   it("cmux: auto-picks the one agent surface, chunks reassemble, submits (RV-M3)", function()
     local d = H.shims({
       cmux = 'echo "$@" >> "$(dirname "$0")/log"; case "$1" in tree) cat "$(dirname "$0")/tree";;'

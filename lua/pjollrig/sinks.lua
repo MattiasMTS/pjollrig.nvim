@@ -1,6 +1,7 @@
 -- Sinks: pi socket, clipboard, cmux, wezterm. `send` reads only the store (via init.list), so GitHub threads
 -- (kept in memory by github.lua) can never reach a sink. On ack, every sent comment whose body is unchanged
--- is marked resolved. Add a sink: `require("pjollrig.sinks").sinks.x = function(text, opts, cb) end`.
+-- is marked resolved, unless the sink's config says resolve = false (you resolve them once you have checked).
+-- Add a sink: `require("pjollrig.sinks").sinks.x = function(text, opts, cb) end`.
 local M = {}
 
 ---Markdown payload; bytes match the pre-rewrite formatter for worktree comments whose line is still there.
@@ -204,15 +205,18 @@ function M.send(name)
   if not vim.tbl_contains(names, name) then
     return vim.notify("pjollrig: sink unavailable: " .. name, vim.log.levels.ERROR)
   end
-  M.sinks[name](M.format(recs), P.config.sinks[name] or {}, function(ok, err)
-    for _, r in ipairs(ok and recs or {}) do -- resolve what was delivered; a mid-send edit stays unresolved
+  local o = P.config.sinks[name] or {}
+  M.sinks[name](M.format(recs), o, function(ok, err)
+    local resolve = ok and o.resolve ~= false
+    for _, r in ipairs(resolve and recs or {}) do -- resolve what was delivered; a mid-send edit stays unresolved
       local S = require("pjollrig.store")
       if (S.load(r.root)[r.id] or {}).body == r.body then
         S.patch(r.root, { { r.id, { resolved = true, sent_to = name } } })
       end
     end
     P.refresh()
-    local msg = ok and ("got %d comment(s)"):format(#recs) or ("failed: " .. tostring(err))
+    local kept = resolve and "" or ", kept unresolved"
+    local msg = ok and ("got %d comment(s)%s"):format(#recs, kept) or ("failed: " .. tostring(err))
     vim.notify(("pjollrig: %s %s"):format(name, msg), ok and vim.log.levels.INFO or vim.log.levels.ERROR)
     local data = { sink = name, ok = ok, err = err, count = #recs }
     vim.api.nvim_exec_autocmds("User", { pattern = "PjollrigSent", data = data })
