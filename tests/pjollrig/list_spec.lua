@@ -24,10 +24,9 @@ describe("list actions", function()
       end
     end
   end
-  local function open(all) -- :Pjollrig list keeps focus in the file; step into the list
+  local function open(all) -- the list opens below the file and the cursor moves into it
     vim.cmd("Pjollrig list" .. (all and " all" or ""))
-    vim.cmd("lopen")
-    assert.are.equal("loclist", vim.fn.win_gettype())
+    assert.are.same({ "loclist", src }, { vim.fn.win_gettype(), vim.fn.getloclist(0, { filewinid = 0 }).filewinid })
   end
 
   before_each(function()
