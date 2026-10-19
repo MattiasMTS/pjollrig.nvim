@@ -34,9 +34,10 @@ COMMANDS                                     *pjollrig-pjollrig.nvim-commands*
   :Pjollrig list [all]                comments in the location list (all
                                       includes resolved). In the list: r
                                       toggles resolved, dd deletes, ce
-                                      edits, u undoes; counts and visual
-                                      ranges work, and the list redraws
-                                      in place
+                                      edits, u undoes the last change to
+                                      the list’s comments; counts and
+                                      visual ranges work, and the list
+                                      redraws in place
 
   :Pjollrig send [sink]               send unresolved comments; delivered
                                       ones are marked resolved (unless
