@@ -491,10 +491,9 @@ function M.loclist(all)
     end
   end
   vim.fn.setloclist(win, {}, " ", { title = title(all), items = rows(all) })
-  api.nvim_win_call(win, function()
-    vim.cmd("lopen")
-  end)
-  keys(vim.fn.getloclist(win, { qfbufnr = 0 }).qfbufnr)
+  api.nvim_set_current_win(win) -- the list opens below the new side, and the cursor moves into it
+  vim.cmd("lopen")
+  keys(api.nvim_get_current_buf())
 end
 
 return M

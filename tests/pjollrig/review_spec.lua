@@ -175,6 +175,17 @@ describe("review", function()
     assert.are.same({ "a", "b", "c" }, api.nvim_buf_get_lines(left, 0, -1, false))
   end)
 
+  it(":Pjollrig list from the old pane opens the list below the new pane and moves the cursor into it", function()
+    review()
+    vim.cmd("cnext") -- mod.txt
+    settle()
+    local wins = api.nvim_tabpage_list_wins(0)
+    local left, right = wins[1], wins[2]
+    api.nvim_set_current_win(left)
+    vim.cmd("Pjollrig list")
+    assert.are.same({ "loclist", right }, { vim.fn.win_gettype(), vim.fn.getloclist(0, { filewinid = 0 }).filewinid })
+  end)
+
   it(":ll lands on its line in an unloaded pjollrig:// buffer (C-M3 lockmarks)", function()
     H.write(root .. "/mod.txt", { "1", "2", "3", "4", "5", "6", "7", "8" })
     H.git(root, "commit", "-qam", "eight")

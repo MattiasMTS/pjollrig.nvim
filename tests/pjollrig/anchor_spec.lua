@@ -166,8 +166,9 @@ describe("where comments are now (list, send)", function()
   it("stepping into the list rebuilds it, so it shows edits made after it opened", function()
     vim.cmd("Pjollrig list")
     assert.are.same({ 2, 4 }, lnums(vim.fn.getloclist(0)))
+    vim.cmd("wincmd p") -- out of the list
     H.write(f, { "new", "alpha", "beta", "gamma", "delta" })
-    vim.cmd("lopen") -- steps into the open list
+    vim.cmd("wincmd p") -- and back in
     assert.are.same({ "loclist", { 3, 5 } }, { vim.fn.win_gettype(), lnums(vim.fn.getloclist(0)) })
   end)
 end)
