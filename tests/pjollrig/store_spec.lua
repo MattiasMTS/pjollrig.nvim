@@ -11,7 +11,7 @@ local function workers(root, roles)
   vim.fn.writefile({}, go)
   for _, j in ipairs(jobs) do
     local r = j:wait(30000)
-    assert.are.equal(0, r.code, r.stderr)
+    assert(r.code == 0, r.stderr) -- are.equal would drop the worker's error
   end
 end
 

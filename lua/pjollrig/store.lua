@@ -56,7 +56,12 @@ function M.patch(root, patches)
     t[#t + 1] = "\n" .. vim.json.encode({ id = p[1], at = now, set = p[2] }) -- leading \n ends any torn tail
   end
   local path, s = M.path(root), table.concat(t)
-  pcall(vim.fn.mkdir, vim.fs.dirname(path), "p") -- races with other nvims: EEXIST is fine
+  local dir = vim.fs.dirname(path)
+  for _ = 1, 8 do -- mkdir -p stops at a component another nvim created first (EEXIST): retry; each try gets further
+    if vim.fn.isdirectory(dir) == 1 or pcall(vim.fn.mkdir, dir, "p") then
+      break
+    end
+  end
   local fd = assert(uv.fs_open(path, "a", 420))
   local n, err = uv.fs_write(fd, s)
   uv.fs_close(fd)
