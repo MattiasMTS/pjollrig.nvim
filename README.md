@@ -33,6 +33,12 @@ require("pjollrig").setup({
 Comments live in `stdpath("state")/pjollrig/<repo>.jsonl` (append-only; safe across several nvims).
 Comments on scratch buffers stay in memory.
 
+A comment follows its line: live in an open buffer, else found again by its text in the file on disk, so the
+list and `send` point where it is now, also after an agent edited a file you have closed. If the commented line
+was rewritten or deleted, the comment is dimmed (a `?` sign, `[?]` in the list) at its old line number, and
+`send` marks it `(line changed)` with a quote of the original line. The list is rebuilt whenever you step
+into it.
+
 ### Any diff tool
 
 A comment's identity is `{root, path, side, rev?}`. A buffer whose `b:pjollrig` holds that table is used as is;

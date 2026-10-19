@@ -91,3 +91,83 @@ describe("re-anchor", function()
     assert.are.same({ 3, "b" }, { P.list()[1].lnum, P.list()[1].line })
   end)
 end)
+
+describe("where comments are now (list, send)", function()
+  local root, f
+  local function lnums(t)
+    return vim.tbl_map(function(x)
+      return x.lnum
+    end, t)
+  end
+  local function texts()
+    return vim.tbl_map(function(it)
+      return it.text
+    end, vim.fn.getloclist(0))
+  end
+  local function payload()
+    return require("pjollrig.sinks").format(P.list())
+  end
+
+  before_each(function()
+    H.reset()
+    root = H.repo()
+    vim.cmd.cd(root)
+    f = root .. "/r.md"
+    H.write(f, { "alpha", "beta", "gamma", "delta" })
+    vim.cmd.edit(f)
+    vim.api.nvim_win_set_cursor(0, { 2, 0 })
+    P.add({ body = "on beta" })
+    vim.api.nvim_win_set_cursor(0, { 4, 0 })
+    P.add({ body = "on delta" })
+    local buf = vim.api.nvim_get_current_buf()
+    vim.cmd("enew")
+    vim.cmd.bwipeout(buf) -- closed: from here on its comments are placed in the file on disk
+  end)
+
+  it(
+    "a closed file edited elsewhere: list rows and the send text use the new line numbers; nothing is written",
+    function()
+      local before = size(root)
+      H.write(f, { "new1", "new2", "alpha", "beta", "gamma", "delta" })
+      assert.are.same({ 4, 6 }, lnums(P.list()))
+      vim.cmd("Pjollrig list")
+      assert.are.same({ 4, 6 }, lnums(vim.fn.getloclist(0)))
+      assert.are.same({ "on beta", "on delta" }, texts())
+      assert.are.equal("Pjollrig review (2 comments):\n\n## M1 r.md:4\non beta\n\n## M2 r.md:6\non delta", payload())
+      assert.are.equal(before, size(root))
+    end
+  )
+
+  it("a rewritten or deleted line: [?] at its old number, and the send text quotes what was commented", function()
+    H.write(f, { "alpha", "beta", "gamma", "delta, reworded" })
+    local recs = P.list()
+    assert.are.same(
+      { { 2, nil }, { 4, true } },
+      { { recs[1].lnum, recs[1].orphaned }, { recs[2].lnum, recs[2].orphaned } }
+    )
+    vim.cmd("Pjollrig list")
+    assert.are.same({ "on beta", "[?] on delta" }, texts())
+    assert(payload():find("## M2 r.md:4 (line changed)\n> delta\non delta", 1, true), payload())
+    H.write(f, { "beta", "x", "beta" }) -- stored row 2 is "x" now and "beta" is ambiguous
+    assert.are.same({ true, true }, { P.list()[1].orphaned, P.list()[2].orphaned })
+    vim.uv.fs_unlink(f)
+    assert.are.same({ { 2, 4 }, { true, true } }, { lnums(P.list()), { P.list()[1].orphaned, P.list()[2].orphaned } })
+  end)
+
+  it("an open buffer: the live mark, unsaved edits included; a dimmed mark is orphaned", function()
+    H.write(f, { "new", "alpha", "beta", "gamma", "delta, reworded" })
+    vim.cmd.edit(f)
+    vim.api.nvim_buf_set_lines(0, 0, 0, false, { "unsaved" })
+    local recs = P.list()
+    assert.are.same({ 4, 5 }, lnums(recs)) -- beta: placed by text, then pushed by the unsaved line; delta: dimmed
+    assert.are.same({ nil, true }, { recs[1].orphaned, recs[2].orphaned })
+  end)
+
+  it("stepping into the list rebuilds it, so it shows edits made after it opened", function()
+    vim.cmd("Pjollrig list")
+    assert.are.same({ 2, 4 }, lnums(vim.fn.getloclist(0)))
+    H.write(f, { "new", "alpha", "beta", "gamma", "delta" })
+    vim.cmd("lopen") -- steps into the open list
+    assert.are.same({ "loclist", { 3, 5 } }, { vim.fn.win_gettype(), lnums(vim.fn.getloclist(0)) })
+  end)
+end)
