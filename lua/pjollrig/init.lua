@@ -152,12 +152,6 @@ function M.paint(buf)
   end
 end
 
-function M.refresh()
-  for _, w in ipairs(api.nvim_list_wins()) do
-    M.paint(api.nvim_win_get_buf(w))
-  end
-end
-
 local function mapper(old, new) -- f(row0) -> new row0, or nil when that line itself changed
   local hunks =
     vim.text.diff(table.concat(old, "\n") .. "\n", table.concat(new, "\n") .. "\n", { result_type = "indices" })
@@ -261,13 +255,30 @@ function M.add(o)
   require("pjollrig.editor").open("", save)
 end
 
-local function target(all, cb) -- mark under the cursor, else pick
-  local buf, row = api.nvim_get_current_buf(), api.nvim_win_get_cursor(0)[1] - 1
+---Records to act on, as a list: in a location list, rows o.line1..o.line2 (default: the cursor row), found by
+---the {root, id} they carry, so GitHub rows (none) stay read-only; else the mark under the cursor; else a pick.
+local function target(all, o, cb)
+  local buf, row = api.nvim_get_current_buf(), api.nvim_win_get_cursor(0)[1]
+  if vim.fn.win_gettype() == "loclist" then
+    local items, recs = vim.fn.getloclist(0), {}
+    for i = o and o.line1 or row, o and o.line2 or row do
+      local u = (items[i] or {}).user_data
+      local k = type(u) == "table" and u.pjollrig
+      local r = k and store.load(k.root)[k.id]
+      if r and not r.deleted then
+        recs[#recs + 1] = vim.tbl_extend("force", r, { root = k.root })
+      end
+    end
+    if #recs == 0 then
+      return vim.notify("pjollrig: no comment on this row")
+    end
+    return cb(recs)
+  end
   local a = M.identity(buf)
   for rid, m in pairs(a and marks[buf] or {}) do
     local r = store.load(a.root)[rid]
-    if r and api.nvim_buf_get_extmark_by_id(buf, ns, m.id, {})[1] == row then
-      return cb(vim.tbl_extend("force", r, { root = a.root }))
+    if r and api.nvim_buf_get_extmark_by_id(buf, ns, m.id, {})[1] == row - 1 then
+      return cb({ vim.tbl_extend("force", r, { root = a.root }) })
     end
   end
   local recs = M.list({ all = all })
@@ -281,55 +292,148 @@ local function target(all, cb) -- mark under the cursor, else pick
     end,
   }, function(r)
     if r then
-      cb(r)
+      cb({ r })
     end
   end)
 end
 
-local function mutate(r, fields)
-  store.patch(r.root, { { r.id, fields } })
+M._undo = {} -- batches of {root, id, fields}: what each edit/delete/resolve overwrote, newest last
+
+local function write(changes) -- {root, id, fields}[]: one store.patch (one write) per root, then repaint
+  local by = {}
+  for _, c in ipairs(changes) do
+    by[c[1]] = by[c[1]] or {}
+    table.insert(by[c[1]], { c[2], c[3] })
+  end
+  for root, patches in pairs(by) do
+    store.patch(root, patches)
+  end
   M.refresh()
 end
 
-function M.edit()
-  target(false, function(r)
-    require("pjollrig.editor").open(r.body, function(body)
-      mutate(r, { body = body, resolved = false }) -- RV-m3: an edit un-hides a comment another nvim just sent
+local function mutate(recs, fields)
+  local changes, back = {}, {}
+  for _, r in ipairs(recs) do
+    local cur, prev = store.load(r.root)[r.id] or r, {}
+    for k in pairs(fields) do
+      prev[k] = cur[k] or false -- fields are never unset: an absent flag comes back as false
+    end
+    changes[#changes + 1], back[#back + 1] = { r.root, r.id, fields }, { r.root, r.id, prev }
+  end
+  table.insert(M._undo, back)
+  write(changes)
+end
+
+function M.edit(o)
+  target(false, o, function(recs)
+    require("pjollrig.editor").open(recs[1].body, function(body)
+      mutate({ recs[1] }, { body = body, resolved = false }) -- RV-m3: an edit un-hides a comment another nvim just sent
     end, "edit")
   end)
 end
 
-function M.delete()
-  target(true, function(r)
-    mutate(r, { deleted = true })
+function M.delete(o)
+  target(true, o, function(recs)
+    mutate(recs, { deleted = true })
   end)
 end
 
-function M.resolve()
-  target(true, function(r)
-    mutate(r, { resolved = not r.resolved })
+---Toggle. Over several rows: resolve them all, unless all already are (then un-resolve them all).
+function M.resolve(o)
+  target(true, o, function(recs)
+    local any = vim.iter(recs):any(function(r)
+      return not r.resolved
+    end)
+    mutate(recs, { resolved = any })
   end)
 end
 
----Fill the location list of the new-side window. Rev-less old rows (foreign diff tools) have no file to jump
----to: they are text-only, labelled "(old, unpinned)" with the anchored line text.
-function M.loclist(all)
+function M.undo() -- the last edit/delete/resolve, wherever it was made
+  local back = table.remove(M._undo)
+  if not back then
+    return vim.notify("pjollrig: nothing to undo")
+  end
+  write(back)
+end
+
+local function title(all)
+  return "pjollrig" .. (all and " (all)" or "")
+end
+
+---Location-list rows. Store rows carry {root, id} (user_data.pjollrig) for the list's own actions; GitHub rows
+---don't. Rev-less old rows (foreign diff tools) have no file to jump to: they are text-only, labelled
+---"(old, unpinned)" with the anchored line text.
+local function rows(all)
   local items = {}
   for _, r in ipairs(M.list({ all = all })) do
     local text = (r.resolved and "[resolved] " or "") .. r.body:match("[^\n]*")
+    local ud = { pjollrig = { root = r.root, id = r.id } }
     if r.side == "old" and not r.rev then
-      items[#items + 1] = { text = ("%s:%d (old, unpinned) %s │ %s"):format(r.path, r.lnum, vim.trim(r.line), text) }
+      items[#items + 1] = {
+        text = ("%s:%d (old, unpinned) %s │ %s"):format(r.path, r.lnum, vim.trim(r.line), text),
+        user_data = ud,
+      }
     else
       local file = r.rev and M.name(r.side, r.root, r.rev, r.path)
         or r.root:sub(1, 1) == "/" and (r.root .. "/" .. r.path)
       local bufnr = not file and tonumber(r.root:match("^buffer:(%d+)")) or nil
-      items[#items + 1] = { filename = file or nil, bufnr = bufnr, lnum = r.lnum, end_lnum = r.end_lnum, text = text }
+      items[#items + 1] =
+        { filename = file or nil, bufnr = bufnr, lnum = r.lnum, end_lnum = r.end_lnum, text = text, user_data = ud }
     end
   end
   local gh = package.loaded["pjollrig.github"]
   if gh then
     vim.list_extend(items, gh.items())
   end
+  return items
+end
+
+---Rebuild every open pjollrig location list in place, keeping its cursor and current entry. Rows are built
+---from the list's own window, so they come from the same root as when it was opened.
+local function relist()
+  for _, w in ipairs(api.nvim_list_wins()) do
+    local ll = vim.fn.win_gettype(w) == "loclist" and vim.fn.getloclist(w, { title = 0, filewinid = 0, idx = 0 })
+    if ll and (ll.title == title(false) or ll.title == title(true)) then
+      local all = ll.title == title(true)
+      local items = ll.filewinid > 0 and api.nvim_win_call(ll.filewinid, function()
+        return rows(all)
+      end) or rows(all)
+      local cur = api.nvim_win_get_cursor(w)[1]
+      local idx = #items > 0 and math.min(ll.idx, #items) or nil -- an idx on an empty list fails
+      vim.fn.setloclist(w, {}, "r", { title = ll.title, items = items, idx = idx })
+      api.nvim_win_set_cursor(w, { math.max(1, math.min(cur, #items)), 0 })
+    end
+  end
+end
+
+function M.refresh() -- after any change: repaint every window, rebuild open lists
+  for _, w in ipairs(api.nvim_list_wins()) do
+    M.paint(api.nvim_win_get_buf(w))
+  end
+  relist()
+end
+
+---The list's own maps: {count}r / {count}dd and visual r / d act on rows, ce edits, u undoes the last change.
+local function keys(buf)
+  local function map(mode, lhs, rhs, desc)
+    vim.keymap.set(mode, lhs, rhs, { buffer = buf, silent = true, desc = "pjollrig: " .. desc })
+  end
+  local function counted(fn)
+    return function()
+      local l = api.nvim_win_get_cursor(0)[1]
+      fn({ line1 = l, line2 = l + vim.v.count1 - 1 })
+    end
+  end
+  map("n", "r", counted(M.resolve), "toggle resolved")
+  map("x", "r", ":Pjollrig resolve<CR>", "toggle resolved")
+  map("n", "dd", counted(M.delete), "delete comment")
+  map("x", "d", ":Pjollrig delete<CR>", "delete comments")
+  map("n", "ce", M.edit, "edit comment")
+  map("n", "u", M.undo, "undo")
+end
+
+---Fill the location list of the new-side window.
+function M.loclist(all)
   local win = api.nvim_get_current_win()
   if vim.wo[win].diff and (M.identity(0) or {}).side == "old" then
     for _, w in ipairs(api.nvim_tabpage_list_wins(0)) do
@@ -338,10 +442,11 @@ function M.loclist(all)
       end
     end
   end
-  vim.fn.setloclist(win, {}, " ", { title = "pjollrig" .. (all and " (all)" or ""), items = items })
+  vim.fn.setloclist(win, {}, " ", { title = title(all), items = rows(all) })
   api.nvim_win_call(win, function()
     vim.cmd("lopen")
   end)
+  keys(vim.fn.getloclist(win, { qfbufnr = 0 }).qfbufnr)
 end
 
 return M
