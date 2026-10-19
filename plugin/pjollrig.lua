@@ -3,8 +3,9 @@ local subs = { "add", "edit", "delete", "resolve", "list", "send", "review" }
 
 api.nvim_create_user_command("Pjollrig", function(o)
   local P, sub, arg = require("pjollrig"), o.fargs[1] or "list", o.fargs[2]
+  local range = o.range > 0 and { line1 = o.line1, line2 = o.line2 } or nil -- in the list: rows
   if sub == "add" then
-    P.add(o.range > 0 and { line1 = o.line1, line2 = o.line2 } or nil)
+    P.add(range)
   elseif sub == "list" then
     P.loclist(arg == "all")
   elseif sub == "send" then
@@ -14,7 +15,7 @@ api.nvim_create_user_command("Pjollrig", function(o)
   elseif sub == "review" then
     require("pjollrig.review").start(arg)
   elseif vim.tbl_contains(subs, sub) then
-    P[sub]()
+    P[sub](range)
   else
     vim.notify("pjollrig: unknown subcommand " .. sub, vim.log.levels.ERROR)
   end

@@ -11,8 +11,8 @@ Line comments on any Neovim buffer, sent to your coding agent. Requires Neovim 0
 | Command | |
 | --- | --- |
 | `:[range]Pjollrig add` | comment the line/range (float editor: `:w` saves, `<S-CR>` saves and closes, `q` discards) |
-| `:Pjollrig edit` / `delete` / `resolve` | the comment under the cursor, else pick one |
-| `:Pjollrig list [all]` | comments in the location list (`all` includes resolved) |
+| `:Pjollrig edit` / `delete` / `resolve` | the comment under the cursor (in the list: the row, or a range of rows), else pick one |
+| `:Pjollrig list [all]` | comments in the location list (`all` includes resolved). In the list: `r` toggles resolved, `dd` deletes, `ce` edits, `u` undoes; counts and visual ranges work, and the list redraws in place |
 | `:Pjollrig send [sink]` | send unresolved comments; delivered ones are marked resolved |
 | `:Pjollrig review [ref]` | changed files in the quickfix list; each opens as a native diff pair. Bare = uncommitted vs `HEAD` (incl. untracked); `ref` = vs `merge-base(HEAD, ref)`. No network. |
 | `:Pjollrig review pr N` | GitHub PR without a checkout (needs `gh`): both sides are read-only buffers at the PR's commits; review threads are shown and listed (outdated ones: listed only), never sent |
