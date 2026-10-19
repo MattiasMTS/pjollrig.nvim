@@ -39,7 +39,8 @@ COMMANDS                                     *pjollrig-pjollrig.nvim-commands*
                                       in place
 
   :Pjollrig send [sink]               send unresolved comments; delivered
-                                      ones are marked resolved
+                                      ones are marked resolved (unless
+                                      the sink has resolve = false)
 
   :Pjollrig review [ref]              changed files in the quickfix list;
                                       each opens as a native diff pair.
@@ -64,6 +65,7 @@ SETUP                                           *pjollrig-pjollrig.nvim-setup*
       sinks = {
         pi = { auto_submit = false },
         cmux = { auto_submit = true }, -- only ever submits into an agent-looking surface
+        clipboard = { resolve = false }, -- keep sent comments until you resolve them yourself
       },
     })
 <
